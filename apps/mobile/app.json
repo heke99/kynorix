@@ -9,7 +9,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.zoryqon.app",
-      "associatedDomains": ["applinks:app.zoryqon.com"],
+      "associatedDomains": [
+        "applinks:app.zoryqon.com"
+      ],
       "infoPlist": {
         "NSFaceIDUsageDescription": "Zoryqon uses Face ID to protect access to your account."
       }
@@ -20,10 +22,23 @@
         {
           "action": "VIEW",
           "autoVerify": true,
-          "data": [{ "scheme": "https", "host": "app.zoryqon.com", "pathPrefix": "/" }],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "data": [
+            {
+              "scheme": "https",
+              "host": "app.zoryqon.com",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#07100f"
+      }
     },
     "plugins": [
       [
@@ -33,10 +48,13 @@
           "faceIDPermission": "Allow Zoryqon to use Face ID."
         }
       ],
-      ["expo-notifications"]
+      [
+        "expo-notifications"
+      ]
     ],
     "extra": {
       "minimumSupportedVersion": "1.0.0"
-    }
+    },
+    "icon": "./assets/icon.png"
   }
 }

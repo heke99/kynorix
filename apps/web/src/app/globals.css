@@ -87,9 +87,17 @@ button {
   place-items: center;
   border-radius: 10px;
   color: #07100f;
-  font-weight: 900;
   background: linear-gradient(135deg, var(--mint), #b4ffe6);
   box-shadow: 0 0 26px rgba(101, 245, 199, 0.18);
+}
+.brand-mark svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .app-header nav {
   display: flex;

@@ -3,6 +3,7 @@
 import type { AuthenticatedUser, CreateMarket, Market } from '@zoryqon/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { operationsApi } from '../lib/api';
+import { BrandMark } from './BrandMark';
 
 type Overview = Awaited<ReturnType<typeof operationsApi.overview>>;
 
@@ -161,8 +162,8 @@ export function OperationsDashboard() {
     <div className="ops-shell">
       <aside className="sidebar">
         <div className="ops-brand">
-          <span>K</span>
-          <b>zoryqon</b>
+          <BrandMark />
+          <b>Zoryqon</b>
           <small>operations</small>
         </div>
         <nav>

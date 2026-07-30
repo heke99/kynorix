@@ -1,5 +1,8 @@
+import { loadRootEnvironment } from './load-root-env.js';
 import { randomBytes } from 'node:crypto';
 import pg, { type PoolClient } from 'pg';
+
+loadRootEnvironment();
 
 const databaseUrl = required('DATABASE_URL');
 const operatorRef = required('OPERATOR_REF');

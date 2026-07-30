@@ -72,7 +72,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const parsed = EnvironmentSchema.safeParse(env);
   if (!parsed.success) {
     const missing = parsed.error.issues.map((issue) => issue.path.join('.')).join(', ');
-    throw new Error(`Invalid or missing production configuration: ${missing}`);
+    throw new Error(`Invalid or missing API configuration: ${missing}`);
   }
   const value = parsed.data;
   if (value.NODE_ENV === 'production') {

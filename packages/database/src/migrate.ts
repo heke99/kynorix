@@ -1,8 +1,11 @@
+import { loadRootEnvironment } from './load-root-env.js';
 import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
+
+loadRootEnvironment();
 
 const { Client } = pg;
 const directory = resolve(dirname(fileURLToPath(import.meta.url)), '../migrations');

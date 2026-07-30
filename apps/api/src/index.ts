@@ -1,5 +1,8 @@
+import { loadRootEnvironment } from './load-root-env.js';
 import { loadConfig } from './config.js';
 import { buildServer } from './server.js';
+
+loadRootEnvironment();
 
 const config = loadConfig();
 const app = await buildServer(config);

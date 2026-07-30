@@ -26,7 +26,9 @@ function apiUrl(): string {
 }
 
 function configuredApiUrl(): string | null {
-  const value = process.env.NEXT_PUBLIC_API_URL;
+  const value =
+    process.env.NEXT_PUBLIC_API_URL ??
+    (process.env.NODE_ENV === 'development' ? 'http://localhost:4000' : undefined);
   return value ? value.replace(/\/$/, '') : null;
 }
 

@@ -185,9 +185,9 @@ function ZoryqonApp({ issuer, clientId }: { issuer: string; clientId: string }) 
       <StatusBar style="light" />
       <View style={styles.header}>
         <View style={styles.brandMark}>
-          <Text style={styles.brandLetter}>K</Text>
+          <Text style={styles.brandLetter}>Z</Text>
         </View>
-        <Text style={styles.brand}>zoryqon</Text>
+        <Text style={styles.brand}>Zoryqon</Text>
         {user ? (
           <Pressable style={styles.balancePill} onPress={() => setTab('wallet')}>
             <Text style={styles.balancePillText}>

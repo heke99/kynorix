@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { AppHeader } from '../components/AppHeader';
+import { BrandMark } from '../components/BrandMark';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -10,13 +11,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body>
         <AppHeader />
         <main>{children}</main>
         <footer>
           <div className="brand footer-brand">
-            <span className="brand-mark">K</span> zoryqon
+            <BrandMark /> <span>Zoryqon</span>
           </div>
           <nav aria-label="Legal links">
             <Link href="/legal/terms">Terms</Link>

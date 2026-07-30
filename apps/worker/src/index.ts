@@ -1,7 +1,10 @@
+import { loadRootEnvironment } from './load-root-env.js';
 import { createHash } from 'node:crypto';
 import { Kafka } from 'kafkajs';
 import pg, { type PoolClient } from 'pg';
 import { z } from 'zod';
+
+loadRootEnvironment();
 
 const EnvironmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
@@ -63,7 +66,10 @@ const kafka = new Kafka({
   clientId: 'zoryqon-worker',
   brokers: [`${broker.hostname}:${broker.port || '9092'}`],
 });
-const producer = kafka.producer({ allowAutoTopicCreation: false, idempotent: true });
+const producer = kafka.producer({
+  allowAutoTopicCreation: config.NODE_ENV !== 'production',
+  idempotent: true,
+});
 await producer.connect();
 const workerRef = `${process.env.HOSTNAME ?? 'worker'}:${process.pid}`;
 

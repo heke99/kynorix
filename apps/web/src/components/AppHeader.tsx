@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { formatAtoms, zoryqonApi } from '../lib/api';
+import { BrandMark } from './BrandMark';
 
 export function AppHeader() {
   const pathname = usePathname();
@@ -27,10 +28,8 @@ export function AppHeader() {
   return (
     <header className="app-header">
       <Link className="brand" href="/" aria-label="Zoryqon home">
-        <span className="brand-mark" aria-hidden="true">
-          K
-        </span>
-        <span>zoryqon</span>
+        <BrandMark />
+        <span>Zoryqon</span>
       </Link>
       <nav aria-label="Primary navigation">
         <Link href="/markets">Markets</Link>

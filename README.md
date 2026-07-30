@@ -30,15 +30,28 @@ canonical PostgreSQL schema live under `packages/`.
 - Docker with Compose
 - Explicit development credentials for every external adapter
 
-Copy `.env.example` to `.env`, replace every placeholder, then run:
+Install dependencies, create the repository-root environment file, start the
+local data services and apply the database migrations:
 
 ```bash
 npm ci
-docker compose up -d
-npm run migrate -w @zoryqon/database
-npm run verify
+npm run dev:setup
+```
+
+`dev:setup` creates `.env` only when it is missing, generates the local
+cryptographic secrets, starts PostgreSQL, Redis, Redpanda and MinIO, and applies
+all migrations. Replace every provider, OIDC and tenant placeholder in `.env`
+before using authentication, funding, custody, compliance, price ingestion or
+notifications.
+
+Start all applications with:
+
+```bash
 npm run dev
 ```
+
+API, worker, database, web and operations commands all load environment files
+from the repository root. No duplicate `apps/*/.env` files are required.
 
 Endpoints:
 
