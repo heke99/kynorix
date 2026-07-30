@@ -1,20 +1,20 @@
 'use client';
 
-import type { Balance } from '@kynorix/contracts';
+import type { Balance } from '@zoryqon/contracts';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { formatAtoms, kynorixApi } from '../../lib/api';
+import { formatAtoms, zoryqonApi } from '../../lib/api';
 
 export default function WalletPage() {
   const [balances, setBalances] = useState<Balance[]>([]);
   const [error, setError] = useState('');
   useEffect(() => {
-    void kynorixApi
+    void zoryqonApi
       .balances()
       .then(setBalances)
       .catch((cause: unknown) => {
         const value = cause as Error & { status?: number };
-        if (value.status === 401) window.location.assign(kynorixApi.loginUrl('/wallet'));
+        if (value.status === 401) window.location.assign(zoryqonApi.loginUrl('/wallet'));
         else setError(value.message);
       });
   }, []);

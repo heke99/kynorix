@@ -1,4 +1,4 @@
-import { kynorixApi } from '../../lib/api';
+import { zoryqonApi } from '../../lib/api';
 export default async function LoginPage({
   searchParams,
 }: {
@@ -9,9 +9,9 @@ export default async function LoginPage({
     <div className="auth-page">
       <section className="form-card">
         <span className="kicker">Secure access</span>
-        <h1>Log in to Kynorix</h1>
+        <h1>Log in to Zoryqon</h1>
         <p>You will continue through the configured identity provider.</p>
-        <a className="primary-button" href={kynorixApi.loginUrl(returnTo)}>
+        <a className="primary-button" href={zoryqonApi.loginUrl(returnTo)}>
           Continue to log in
         </a>
       </section>

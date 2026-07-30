@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Kynorix Operations',
-  description: 'Protected Kynorix market, resolution, risk and finance operations.',
+  title: 'Zoryqon Operations',
+  description: 'Protected Zoryqon market, resolution, risk and finance operations.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

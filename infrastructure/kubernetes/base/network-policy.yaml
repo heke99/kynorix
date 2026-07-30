@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny
-  namespace: kynorix
+  namespace: zoryqon
 spec:
   podSelector: {}
   policyTypes: [Ingress, Egress]
@@ -11,11 +11,11 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: api-explicit-access
-  namespace: kynorix
+  namespace: zoryqon
 spec:
   podSelector:
     matchLabels:
-      app: kynorix-api
+      app: zoryqon-api
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
@@ -54,11 +54,11 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: worker-explicit-access
-  namespace: kynorix
+  namespace: zoryqon
 spec:
   podSelector:
     matchLabels:
-      app: kynorix-worker
+      app: zoryqon-worker
   policyTypes: [Egress]
   egress:
     - to:

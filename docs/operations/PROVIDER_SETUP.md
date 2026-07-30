@@ -1,6 +1,6 @@
 # Provider setup guide
 
-Kynorix requires contracted adapters for identity, payment, custody, compliance,
+Zoryqon requires contracted adapters for identity, payment, custody, compliance,
 price data, notifications, object storage, and event transport. For each
 provider, record the legal entity, contracted product, data locations,
 sub-processors, licences, service levels, rate limits, retention, incident

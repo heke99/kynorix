@@ -17,7 +17,7 @@ const EnvironmentSchema = z.object({
   OIDC_CLIENT_SECRET: z.string().min(1),
   OIDC_REDIRECT_URI: z.string().url(),
   SESSION_ENCRYPTION_KEY: z.string().min(43),
-  KYNORIX_TENANT_REF: z.string().min(1),
+  ZORYQON_TENANT_REF: z.string().min(1),
   PAYMENT_PROVIDER_BASE_URL: z.string().url(),
   PAYMENT_PROVIDER_API_KEY: z.string().min(1),
   PAYMENT_PROVIDER_WEBHOOK_SECRET: z.string().min(32),
@@ -27,6 +27,7 @@ const EnvironmentSchema = z.object({
   PRICE_PROVIDER_API_KEY: z.string().min(1),
   COMPLIANCE_PROVIDER_BASE_URL: z.string().url(),
   COMPLIANCE_PROVIDER_API_KEY: z.string().min(1),
+  RESOLUTION_DISPUTE_WINDOW_HOURS: z.coerce.number().int().min(1).max(720).default(24),
   LOG_LEVEL: z.string().default('info'),
   TRUST_PROXY: z.enum(['true', 'false']).default('false'),
 });
@@ -59,6 +60,7 @@ export interface ApiConfig {
   };
   logLevel: string;
   trustProxy: boolean;
+  resolutionDisputeWindowHours: number;
 }
 
 export interface ProviderConfig {
@@ -73,6 +75,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     throw new Error(`Invalid or missing production configuration: ${missing}`);
   }
   const value = parsed.data;
+  if (value.NODE_ENV === 'production') {
+    for (const [name, endpoint] of [
+      ['PAYMENT_PROVIDER_BASE_URL', value.PAYMENT_PROVIDER_BASE_URL],
+      ['CUSTODY_PROVIDER_BASE_URL', value.CUSTODY_PROVIDER_BASE_URL],
+      ['PRICE_PROVIDER_BASE_URL', value.PRICE_PROVIDER_BASE_URL],
+      ['COMPLIANCE_PROVIDER_BASE_URL', value.COMPLIANCE_PROVIDER_BASE_URL],
+      ['OBJECT_STORAGE_ENDPOINT', value.OBJECT_STORAGE_ENDPOINT],
+    ] as const) {
+      assertProductionEndpoint(name, endpoint);
+    }
+  }
   return {
     environment: value.NODE_ENV,
     host: value.API_HOST,
@@ -86,7 +99,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     eventBrokerUrl: value.EVENT_BROKER_URL,
     objectStorageEndpoint: value.OBJECT_STORAGE_ENDPOINT,
     objectStorageBucket: value.OBJECT_STORAGE_BUCKET,
-    tenantRef: value.KYNORIX_TENANT_REF,
+    tenantRef: value.ZORYQON_TENANT_REF,
     oidc: {
       issuer: value.OIDC_ISSUER,
       audience: value.OIDC_AUDIENCE,
@@ -116,5 +129,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     },
     logLevel: value.LOG_LEVEL,
     trustProxy: value.TRUST_PROXY === 'true',
+    resolutionDisputeWindowHours: value.RESOLUTION_DISPUTE_WINDOW_HOURS,
   };
+}
+
+function assertProductionEndpoint(name: string, value: string): void {
+  const url = new URL(value);
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const privateHost =
+    hostname === 'localhost' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname.endsWith('.local') ||
+    /^127\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^169\.254\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+  if (url.protocol !== 'https:' || privateHost || url.username || url.password) {
+    throw new Error(`${name} must use a credential-free public HTTPS endpoint in production.`);
+  }
 }

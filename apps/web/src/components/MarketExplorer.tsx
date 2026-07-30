@@ -1,8 +1,8 @@
 'use client';
 
-import type { Market } from '@kynorix/contracts';
+import type { Market } from '@zoryqon/contracts';
 import { useCallback, useEffect, useState } from 'react';
-import { kynorixApi } from '../lib/api';
+import { zoryqonApi } from '../lib/api';
 import { MarketCard } from './MarketCard';
 
 export function MarketExplorer({
@@ -37,7 +37,7 @@ export function MarketExplorer({
         if (query) filters.query = query;
         if (category) filters.category = category;
         if (append && cursor) filters.cursor = cursor;
-        const result = await kynorixApi.markets(filters);
+        const result = await zoryqonApi.markets(filters);
         setMarkets((current) => (append ? [...current, ...result.items] : result.items));
         setCursor(result.nextCursor);
       } catch (cause) {
@@ -51,7 +51,7 @@ export function MarketExplorer({
   );
 
   useEffect(() => {
-    void kynorixApi
+    void zoryqonApi
       .categories()
       .then(setCategories)
       .catch(() => setCategories([]));

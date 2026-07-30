@@ -1,10 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  transpilePackages: ['@kynorix/contracts'],
+  transpilePackages: ['@zoryqon/contracts'],
   poweredByHeader: false,
   experimental: {
-    optimizePackageImports: ['@kynorix/contracts'],
+    optimizePackageImports: ['@zoryqon/contracts'],
   },
 };
 

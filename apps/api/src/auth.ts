@@ -5,8 +5,8 @@ import {
   randomBytes,
   timingSafeEqual,
 } from 'node:crypto';
-import type { AuthenticatedUser } from '@kynorix/contracts';
-import { externalRef } from '@kynorix/core';
+import type { AuthenticatedUser } from '@zoryqon/contracts';
+import { externalRef } from '@zoryqon/core';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import type { ApiConfig } from './config.js';
@@ -148,21 +148,21 @@ export class AuthService {
       ],
     );
     const secure = this.config.environment !== 'development';
-    reply.setCookie('kynorix_access', tokens.access_token, {
+    reply.setCookie('zoryqon_access', tokens.access_token, {
       path: '/',
       httpOnly: true,
       secure,
       sameSite: 'lax',
       maxAge: Math.max(60, tokens.expires_in),
     });
-    reply.setCookie('kynorix_session', sessionRef, {
+    reply.setCookie('zoryqon_session', sessionRef, {
       path: '/',
       httpOnly: true,
       secure,
       sameSite: 'lax',
       maxAge: Math.max(60, tokens.expires_in),
     });
-    reply.setCookie('kynorix_csrf', randomBytes(24).toString('base64url'), {
+    reply.setCookie('zoryqon_csrf', randomBytes(24).toString('base64url'), {
       path: '/',
       httpOnly: false,
       secure,
@@ -179,7 +179,7 @@ export class AuthService {
     const authorization = request.headers.authorization;
     const token = authorization?.startsWith('Bearer ')
       ? authorization.slice(7)
-      : request.cookies.kynorix_access;
+      : request.cookies.zoryqon_access;
     if (!token) {
       if (required) throw authError('AUTHENTICATION_REQUIRED', 401);
       return null;
@@ -189,7 +189,7 @@ export class AuthService {
     });
     const subject = claims.sub;
     if (!subject) throw authError('INVALID_ACCESS_TOKEN', 401);
-    const sessionRef = request.cookies.kynorix_session;
+    const sessionRef = request.cookies.zoryqon_session;
     if (!authorization && sessionRef) {
       const session = await this.database.query<{ mfa_verified: boolean }>(
         `select s.mfa_verified from public.user_sessions s
@@ -208,7 +208,7 @@ export class AuthService {
 
   verifyCsrf(request: FastifyRequest): void {
     if (request.headers.authorization?.startsWith('Bearer ')) return;
-    const cookie = request.cookies.kynorix_csrf;
+    const cookie = request.cookies.zoryqon_csrf;
     const header = request.headers['x-csrf-token'];
     if (
       !cookie ||
@@ -227,20 +227,20 @@ export class AuthService {
   }
 
   async logout(request: FastifyRequest, reply: FastifyReply): Promise<void> {
-    const sessionRef = request.cookies.kynorix_session;
+    const sessionRef = request.cookies.zoryqon_session;
     if (sessionRef) {
       await this.database.query(
         'update public.user_sessions set revoked_at = clock_timestamp() where session_ref = $1',
         [sessionRef],
       );
     }
-    for (const cookie of ['kynorix_access', 'kynorix_session', 'kynorix_csrf']) {
+    for (const cookie of ['zoryqon_access', 'zoryqon_session', 'zoryqon_csrf']) {
       reply.clearCookie(cookie, { path: '/' });
     }
   }
 
   async refresh(request: FastifyRequest, reply: FastifyReply): Promise<{ expiresIn: number }> {
-    const sessionRef = request.cookies.kynorix_session;
+    const sessionRef = request.cookies.zoryqon_session;
     if (!sessionRef) throw authError('AUTHENTICATION_REQUIRED', 401);
     return this.database.transaction({}, async (client) => {
       const result = await client.query<{
@@ -305,7 +305,7 @@ export class AuthService {
         ],
       );
       const secure = this.config.environment !== 'development';
-      reply.setCookie('kynorix_access', tokens.access_token, {
+      reply.setCookie('zoryqon_access', tokens.access_token, {
         path: '/',
         httpOnly: true,
         secure,
@@ -362,7 +362,7 @@ export class AuthService {
         ? claims.name
         : typeof claims.preferred_username === 'string'
           ? claims.preferred_username
-          : (email ?? 'Kynorix customer');
+          : (email ?? 'Zoryqon customer');
     await this.database.transaction({ tenantId }, async (client) => {
       const user = await client.query<{ id: string }>(
         `insert into public.users

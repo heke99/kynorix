@@ -1,6 +1,6 @@
 'use client';
 
-import type { MarketHistoryPoint } from '@kynorix/contracts';
+import type { MarketHistoryPoint } from '@zoryqon/contracts';
 
 export function PriceChart({ points }: { points: MarketHistoryPoint[] }) {
   if (points.length < 2) {

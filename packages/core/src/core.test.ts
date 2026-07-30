@@ -6,7 +6,7 @@ import {
   transitionMarket,
 } from './index.js';
 
-describe('Kynorix core invariants', () => {
+describe('Zoryqon core invariants', () => {
   it('rejects an unbalanced ledger journal', () => {
     expect(() =>
       assertBalancedPostings([

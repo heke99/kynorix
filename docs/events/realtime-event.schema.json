@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://kynorix.example/schemas/realtime-event-v1.json",
-  "title": "Kynorix realtime event",
+  "$id": "https://zoryqon.example/schemas/realtime-event-v1.json",
+  "title": "Zoryqon realtime event",
   "type": "object",
   "additionalProperties": false,
   "required": [

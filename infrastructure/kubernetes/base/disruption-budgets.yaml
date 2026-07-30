@@ -2,20 +2,20 @@ apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: api
-  namespace: kynorix
+  namespace: zoryqon
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: kynorix-api
+      app: zoryqon-api
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: worker
-  namespace: kynorix
+  namespace: zoryqon
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: kynorix-worker
+      app: zoryqon-worker

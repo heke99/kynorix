@@ -1,26 +1,26 @@
 {
   "expo": {
-    "name": "Kynorix",
-    "slug": "kynorix",
+    "name": "Zoryqon",
+    "slug": "zoryqon",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "scheme": "kynorix",
+    "scheme": "zoryqon",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kynorix.app",
-      "associatedDomains": ["applinks:app.kynorix.com"],
+      "bundleIdentifier": "com.zoryqon.app",
+      "associatedDomains": ["applinks:app.zoryqon.com"],
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Kynorix uses Face ID to protect access to your account."
+        "NSFaceIDUsageDescription": "Zoryqon uses Face ID to protect access to your account."
       }
     },
     "android": {
-      "package": "com.kynorix.app",
+      "package": "com.zoryqon.app",
       "intentFilters": [
         {
           "action": "VIEW",
           "autoVerify": true,
-          "data": [{ "scheme": "https", "host": "app.kynorix.com", "pathPrefix": "/" }],
+          "data": [{ "scheme": "https", "host": "app.zoryqon.com", "pathPrefix": "/" }],
           "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
@@ -30,7 +30,7 @@
         "expo-secure-store",
         {
           "configureAndroidBackup": false,
-          "faceIDPermission": "Allow Kynorix to use Face ID."
+          "faceIDPermission": "Allow Zoryqon to use Face ID."
         }
       ],
       ["expo-notifications"]

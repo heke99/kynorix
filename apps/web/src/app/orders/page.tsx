@@ -1,18 +1,18 @@
 'use client';
 
-import type { Order } from '@kynorix/contracts';
+import type { Order } from '@zoryqon/contracts';
 import { useCallback, useEffect, useState } from 'react';
-import { formatDate, kynorixApi } from '../../lib/api';
+import { formatDate, zoryqonApi } from '../../lib/api';
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState('');
   const load = useCallback(async () => {
     try {
-      setOrders(await kynorixApi.orders());
+      setOrders(await zoryqonApi.orders());
     } catch (cause) {
       const value = cause as Error & { status?: number };
-      if (value.status === 401) window.location.assign(kynorixApi.loginUrl('/orders'));
+      if (value.status === 401) window.location.assign(zoryqonApi.loginUrl('/orders'));
       else setError(value.message);
     }
   }, []);
@@ -51,7 +51,7 @@ export default function OrdersPage() {
               <span>
                 {formatDate(order.createdAt)}{' '}
                 {(order.status === 'open' || order.status === 'partially_filled') && (
-                  <button onClick={() => void kynorixApi.cancelOrder(order.orderRef).then(load)}>
+                  <button onClick={() => void zoryqonApi.cancelOrder(order.orderRef).then(load)}>
                     Cancel
                   </button>
                 )}

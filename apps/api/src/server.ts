@@ -11,6 +11,7 @@ import {
   ConfirmWithdrawalSchema,
   MarketQuerySchema,
   MarketStatusSchema,
+  MintCompleteSetSchema,
   OrderQuoteRequestSchema,
   PlaceOrderSchema,
   ProposeResolutionSchema,
@@ -18,8 +19,8 @@ import {
   type ApiEnvelope,
   type ApiErrorBody,
   type RealtimeEvent,
-} from '@kynorix/contracts';
-import { externalRef } from '@kynorix/core';
+} from '@zoryqon/contracts';
+import { externalRef } from '@zoryqon/core';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import rawBody from 'fastify-raw-body';
 import { z } from 'zod';
@@ -27,7 +28,7 @@ import { AuthService } from './auth.js';
 import type { ApiConfig } from './config.js';
 import { Database } from './database.js';
 import { ProviderRegistry } from './providers.js';
-import { DomainError, KynorixRepository } from './repository.js';
+import { DomainError, ZoryqonRepository } from './repository.js';
 
 export async function buildServer(config: ApiConfig) {
   const app = Fastify({
@@ -53,7 +54,7 @@ export async function buildServer(config: ApiConfig) {
   const database = new Database(config);
   const providers = new ProviderRegistry(config);
   const auth = new AuthService(config, database);
-  const repository = new KynorixRepository(database, config, providers);
+  const repository = new ZoryqonRepository(database, config, providers);
 
   await app.register(cookie);
   await app.register(rawBody, {
@@ -152,7 +153,7 @@ export async function buildServer(config: ApiConfig) {
       : false;
     const checks = {
       postgres: db.ok,
-      migration: db.migrationVersion === '20260730010000',
+      migration: db.migrationVersion === '20260730170000',
       redis,
       eventBroker: broker,
       objectStorage,
@@ -243,6 +244,16 @@ export async function buildServer(config: ApiConfig) {
   app.get('/v1/positions', async (request) => {
     const principal = await auth.principal(request);
     return envelope(request, await repository.positions(principal));
+  });
+  app.post('/v1/markets/:marketRef/complete-sets', async (request, reply) => {
+    const principal = await auth.principal(request);
+    const { marketRef } = refParams(request);
+    const mint = await repository.mintCompleteSet(
+      principal,
+      marketRef,
+      MintCompleteSetSchema.parse(request.body),
+    );
+    return reply.status(201).send(envelope(request, mint));
   });
   app.get('/v1/orders', async (request) => {
     const principal = await auth.principal(request);

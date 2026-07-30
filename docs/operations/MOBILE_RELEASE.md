@@ -1,7 +1,7 @@
 # Mobile release guide
 
-The production identifiers are `com.kynorix.app` for iOS and Android. Configure
-the OIDC mobile client for PKCE, the `kynorix://auth` redirect, universal links,
+The production identifiers are `com.zoryqon.app` for iOS and Android. Configure
+the OIDC mobile client for PKCE, the `zoryqon://auth` redirect, universal links,
 token rotation, remote revocation, and the exact production signing identities.
 
 Before submission:

@@ -1,4 +1,4 @@
-# Kynorix delivery report
+# Zoryqon delivery report
 
 Delivery date: 2026-07-30  
 Production decision: **NO-GO**
@@ -21,10 +21,18 @@ Production decision: **NO-GO**
   resources, OpenAPI, and runbooks use the same English production model.
 - The repository includes an audited bootstrap CLI, immutable migration
   manifest, Kubernetes workload definitions and environment overlays.
+- Scheduled definitions are materialised through durable, idempotent worker
+  runs with tenant context, recurrence advancement and persisted failures.
+- Binary complete sets lock full collateral and issue one position lot per
+  outcome in the same transaction, subject to cumulative position limits.
+- Withdrawal provider submission is claimed atomically before the external
+  call and uses a stable provider idempotency key across retries.
+- Resolution dispute windows and exactly-once settlement orchestration are
+  implemented with durable claims, balanced journals and replay-safe state.
 
 ## Verification evidence
 
-The following command completed successfully in this delivery:
+The repository baseline previously completed:
 
 ```bash
 npm run verify
@@ -36,15 +44,18 @@ end-to-end command wiring, and production builds for packages, API, worker, web,
 operations, and mobile. The integration and end-to-end runners currently report
 that no matching test files exist; this is a release blocker, not test evidence.
 
-PostgreSQL binaries and container execution are unavailable in the delivery
-environment, so the migration has not been applied to a real database here.
+For the 2026-07-30 financial-core completion, the forbidden-terminology scan and
+the two-migration filename/checksum manifest were run successfully. A clean
+lockfile installation could not be completed in the delivery environment
+because the package source returned integrity/checksum failures, so formatting,
+TypeScript, test and build commands must be rerun in CI. PostgreSQL binaries and
+container execution are unavailable here, so the forward migration has not
+been applied to a real database in this environment.
 
 ## Remaining release blockers
 
-- Scheduled definitions are detected by the worker but complete approved market
-  materialisation is not yet implemented as one canonical transaction.
-- Automated price-index calculation, dispute-window enforcement, and
-  exactly-once settlement require complete target-provider flows.
+- Automated price-index calculation still requires a licensed target-provider
+  implementation and governance approval.
 - Operations workflows outside the delivered read models, market lifecycle, and
   resolution action require complete screens and mutations.
 - Database concurrency, webhook replay, settlement replay, tenant isolation,
@@ -60,6 +71,6 @@ Do not accept production customer funds until every blocker in this report and
 ## Migration safety
 
 The baseline migration is appropriate only for an empty, unreleased database.
-If the previous baseline has ever been applied to a persistent environment, do
-not replace its file. Restore the exact applied migration and create a forward
-migration from the real schema state before deployment.
+The Zoryqon rename changed its textual checksum. If the previous baseline has
+ever been applied to a persistent environment, keep the exact applied baseline
+and reconcile migration history before applying the new forward migration.

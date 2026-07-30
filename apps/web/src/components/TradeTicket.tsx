@@ -1,9 +1,9 @@
 'use client';
 
-import type { FeeQuote, Market, OrderSide, Outcome, TimeInForce } from '@kynorix/contracts';
+import type { FeeQuote, Market, OrderSide, Outcome, TimeInForce } from '@zoryqon/contracts';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { formatAtoms, kynorixApi } from '../lib/api';
+import { formatAtoms, zoryqonApi } from '../lib/api';
 
 export function TradeTicket({
   market,
@@ -42,7 +42,7 @@ export function TradeTicket({
     setMessage('');
     try {
       setQuote(
-        await kynorixApi.quoteOrder({
+        await zoryqonApi.quoteOrder({
           marketRef: market.marketRef,
           outcomeRef: selectedOutcome.outcomeRef,
           side,
@@ -65,7 +65,7 @@ export function TradeTicket({
     setBusy(true);
     setMessage('');
     try {
-      const order = await kynorixApi.placeOrder({
+      const order = await zoryqonApi.placeOrder({
         marketRef: market.marketRef,
         outcomeRef: selectedOutcome.outcomeRef,
         side,
@@ -247,7 +247,7 @@ export function TradeTicket({
 function handleError(cause: unknown, marketRef: string, setMessage: (value: string) => void) {
   const error = cause as Error & { status?: number };
   if (error.status === 401) {
-    window.location.assign(kynorixApi.loginUrl(`/markets/${marketRef}`));
+    window.location.assign(zoryqonApi.loginUrl(`/markets/${marketRef}`));
     return;
   }
   setMessage(error.message || 'The order could not be processed.');

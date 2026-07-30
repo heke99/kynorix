@@ -1,15 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { kynorixApi } from '../../../lib/api';
+import { zoryqonApi } from '../../../lib/api';
 
-type Session = Awaited<ReturnType<typeof kynorixApi.sessions>>[number];
+type Session = Awaited<ReturnType<typeof zoryqonApi.sessions>>[number];
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [error, setError] = useState('');
   const load = useCallback(async () => {
-    setSessions(await kynorixApi.sessions());
+    setSessions(await zoryqonApi.sessions());
   }, []);
   useEffect(() => {
     void load().catch((cause: unknown) =>
@@ -18,7 +18,7 @@ export default function SessionsPage() {
   }, [load]);
   async function revoke(sessionRef: string) {
     try {
-      await kynorixApi.revokeSession(sessionRef);
+      await zoryqonApi.revokeSession(sessionRef);
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Session could not be revoked.');

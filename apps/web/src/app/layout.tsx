@@ -4,7 +4,7 @@ import { AppHeader } from '../components/AppHeader';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Kynorix — Event Exchange',
+  title: 'Zoryqon — Event Exchange',
   description: 'Trade transparent event markets with published rules and verifiable outcomes.',
 };
 
@@ -16,7 +16,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <main>{children}</main>
         <footer>
           <div className="brand footer-brand">
-            <span className="brand-mark">K</span> kynorix
+            <span className="brand-mark">K</span> zoryqon
           </div>
           <nav aria-label="Legal links">
             <Link href="/legal/terms">Terms</Link>

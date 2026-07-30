@@ -1,5 +1,5 @@
 {
-  "name": "@kynorix/api",
+  "name": "@zoryqon/api",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,8 +16,8 @@
     "@fastify/helmet": "^13.0.2",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/websocket": "^11.2.0",
-    "@kynorix/contracts": "*",
-    "@kynorix/core": "*",
+    "@zoryqon/contracts": "*",
+    "@zoryqon/core": "*",
     "fastify": "^5.4.0",
     "fastify-raw-body": "^5.0.0",
     "jose": "^6.0.12",

@@ -1,5 +1,5 @@
 {
-  "name": "@kynorix/worker",
+  "name": "@zoryqon/worker",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@kynorix/core": "*",
+    "@zoryqon/core": "*",
     "kafkajs": "^2.2.4",
     "pg": "^8.16.0",
     "zod": "^4.0.0"

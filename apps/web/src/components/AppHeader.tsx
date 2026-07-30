@@ -1,10 +1,10 @@
 'use client';
 
-import type { AuthenticatedUser, Balance } from '@kynorix/contracts';
+import type { AuthenticatedUser, Balance } from '@zoryqon/contracts';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { formatAtoms, kynorixApi } from '../lib/api';
+import { formatAtoms, zoryqonApi } from '../lib/api';
 
 export function AppHeader() {
   const pathname = usePathname();
@@ -12,11 +12,11 @@ export function AppHeader() {
   const [balance, setBalance] = useState<Balance>();
 
   useEffect(() => {
-    void kynorixApi
+    void zoryqonApi
       .me()
       .then(async (nextUser) => {
         setUser(nextUser);
-        setBalance((await kynorixApi.balances())[0]);
+        setBalance((await zoryqonApi.balances())[0]);
       })
       .catch(() => {
         setUser(undefined);
@@ -26,11 +26,11 @@ export function AppHeader() {
 
   return (
     <header className="app-header">
-      <Link className="brand" href="/" aria-label="Kynorix home">
+      <Link className="brand" href="/" aria-label="Zoryqon home">
         <span className="brand-mark" aria-hidden="true">
           K
         </span>
-        <span>kynorix</span>
+        <span>zoryqon</span>
       </Link>
       <nav aria-label="Primary navigation">
         <Link href="/markets">Markets</Link>
@@ -58,10 +58,10 @@ export function AppHeader() {
           </>
         ) : (
           <>
-            <a className="login-link" href={kynorixApi.loginUrl(pathname)}>
+            <a className="login-link" href={zoryqonApi.loginUrl(pathname)}>
               Log in
             </a>
-            <a className="primary-button compact" href={kynorixApi.loginUrl('/verification')}>
+            <a className="primary-button compact" href={zoryqonApi.loginUrl('/verification')}>
               Sign up
             </a>
           </>

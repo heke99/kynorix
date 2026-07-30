@@ -361,6 +361,21 @@ export const CreateMarketSchema = z
   });
 export type CreateMarket = z.infer<typeof CreateMarketSchema>;
 
+export const MintCompleteSetSchema = z.object({
+  quantity: z.string().regex(/^[1-9]\d*$/),
+  idempotencyKey: z.string().min(16).max(200),
+});
+export type MintCompleteSet = z.infer<typeof MintCompleteSetSchema>;
+
+export interface CompleteSetMint {
+  mintRef: string;
+  marketRef: string;
+  quantity: string;
+  collateralAtoms: string;
+  outcomes: Array<{ outcomeRef: string; quantity: string }>;
+  mintedAt: string;
+}
+
 export interface AuthenticatedUser {
   userRef: string;
   email: string;

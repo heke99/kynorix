@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Kynorix uses one transactional API boundary for orders, matching, positions,
+Zoryqon uses one transactional API boundary for orders, matching, positions,
 double-entry journals, and the outbox. PostgreSQL is the financial source of
 truth. This keeps the commit boundary explicit while the product is operated by
 one team and prevents partial economic state across network services.

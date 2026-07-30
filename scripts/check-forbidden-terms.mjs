@@ -7,8 +7,8 @@ const patterns = [
   'virtual ' + 'balance',
   'virtual ' + 'settlement',
   'V' + 'SEK',
-  'x-kynorix-' + 'user',
-  'x-kynorix-' + 'admin',
+  'x-zoryqon-' + 'user',
+  'x-zoryqon-' + 'admin',
   'mock-' + 'chart',
   'sv-' + 'SE',
 ];

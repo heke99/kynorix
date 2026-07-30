@@ -1,8 +1,8 @@
 'use client';
 
-import type { VerificationStatus } from '@kynorix/contracts';
+import type { VerificationStatus } from '@zoryqon/contracts';
 import { useEffect, useState } from 'react';
-import { kynorixApi } from '../../lib/api';
+import { zoryqonApi } from '../../lib/api';
 
 export default function VerificationPage() {
   const [status, setStatus] = useState<VerificationStatus>();
@@ -10,7 +10,7 @@ export default function VerificationPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void kynorixApi
+    void zoryqonApi
       .verification()
       .then(setStatus)
       .catch((cause: unknown) => {
@@ -22,7 +22,7 @@ export default function VerificationPage() {
     setBusy(true);
     setError('');
     try {
-      const next = await kynorixApi.startVerification({
+      const next = await zoryqonApi.startVerification({
         requiredLevel: 'basic',
         returnUrl: window.location.href,
         idempotencyKey: crypto.randomUUID(),

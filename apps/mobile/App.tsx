@@ -1,4 +1,4 @@
-import type { AuthenticatedUser, Balance, FeeQuote, Market, Position } from '@kynorix/contracts';
+import type { AuthenticatedUser, Balance, FeeQuote, Market, Position } from '@zoryqon/contracts';
 import * as AuthSession from 'expo-auth-session';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { StatusBar } from 'expo-status-bar';
@@ -28,12 +28,12 @@ export default function App() {
   if (!issuer || !clientId) {
     return <ConfigurationError />;
   }
-  return <KynorixApp issuer={issuer} clientId={clientId} />;
+  return <ZoryqonApp issuer={issuer} clientId={clientId} />;
 }
 
-function KynorixApp({ issuer, clientId }: { issuer: string; clientId: string }) {
+function ZoryqonApp({ issuer, clientId }: { issuer: string; clientId: string }) {
   const discovery = AuthSession.useAutoDiscovery(issuer);
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'kynorix', path: 'auth' });
+  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'zoryqon', path: 'auth' });
   const [authRequest, authResponse, promptAsync] = AuthSession.useAuthRequest(
     {
       clientId,
@@ -75,7 +75,7 @@ function KynorixApp({ issuer, clientId }: { issuer: string; clientId: string }) 
         setPositions(nextPositions);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Kynorix is currently unavailable.');
+      setError(cause instanceof Error ? cause.message : 'Zoryqon is currently unavailable.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -115,7 +115,7 @@ function KynorixApp({ issuer, clientId }: { issuer: string; clientId: string }) 
 
   async function unlock() {
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Unlock Kynorix',
+      promptMessage: 'Unlock Zoryqon',
       cancelLabel: 'Cancel',
     });
     if (!result.success) setError('Biometric authentication was not completed.');
@@ -187,7 +187,7 @@ function KynorixApp({ issuer, clientId }: { issuer: string; clientId: string }) 
         <View style={styles.brandMark}>
           <Text style={styles.brandLetter}>K</Text>
         </View>
-        <Text style={styles.brand}>kynorix</Text>
+        <Text style={styles.brand}>zoryqon</Text>
         {user ? (
           <Pressable style={styles.balancePill} onPress={() => setTab('wallet')}>
             <Text style={styles.balancePillText}>

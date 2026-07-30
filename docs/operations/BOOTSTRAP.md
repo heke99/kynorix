@@ -6,12 +6,12 @@ transaction, and appends an audit event. Values shown below are names only;
 secrets must be injected by the approved secrets manager.
 
 ```bash
-npm run migrate -w @kynorix/database
-npm run bootstrap -w @kynorix/database -- first-admin
-npm run bootstrap -w @kynorix/database -- asset
-npm run bootstrap -w @kynorix/database -- provider
-npm run bootstrap -w @kynorix/database -- fee-schedule
-npm run bootstrap -w @kynorix/database -- market-template
+npm run migrate -w @zoryqon/database
+npm run bootstrap -w @zoryqon/database -- first-admin
+npm run bootstrap -w @zoryqon/database -- asset
+npm run bootstrap -w @zoryqon/database -- provider
+npm run bootstrap -w @zoryqon/database -- fee-schedule
+npm run bootstrap -w @zoryqon/database -- market-template
 ```
 
 `first-admin` requires `TENANT_REF`, `TENANT_LEGAL_NAME`, `TENANT_COUNTRY`,

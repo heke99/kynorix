@@ -1,11 +1,16 @@
 {
   "algorithm": "sha256",
-  "generatedAt": "2026-07-30T14:00:00.000Z",
+  "generatedAt": "2026-07-30T18:00:00.000Z",
   "migrations": [
     {
       "version": "20260730010000",
       "filename": "20260730010000_initial_production.sql",
-      "sha256": "4ecfdce6af1d6f38e979b41a1fff1081f2fd5c9ca763a6bac268dd80a263d6a5"
+      "sha256": "e6b90baabc0a8aa61cb86c9b93626c55dca2f76bd4b5a91aee245a3b9ab7ae0f"
+    },
+    {
+      "version": "20260730170000",
+      "filename": "20260730170000_zoryqon_financial_core_completion.sql",
+      "sha256": "c02c4c8a946ed6a691fcf66bb553e265a6642112a24d5f9532995c8d55631f74"
     }
   ]
 }

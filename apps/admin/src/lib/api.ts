@@ -5,7 +5,7 @@ import type {
   Market,
   Page,
   ProposeResolution,
-} from '@kynorix/contracts';
+} from '@zoryqon/contracts';
 
 function apiUrl(): string {
   const value = configuredApiUrl();
@@ -21,7 +21,7 @@ function configuredApiUrl(): string | null {
 async function adminApi<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body) headers.set('content-type', 'application/json');
-  const csrf = readCookie('kynorix_csrf');
+  const csrf = readCookie('zoryqon_csrf');
   if (csrf && init?.method && init.method !== 'GET') headers.set('x-csrf-token', csrf);
   const response = await fetch(`${apiUrl()}${path}`, {
     ...init,

@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
-  title: Kynorix API
+  title: Zoryqon API
   version: 1.0.0
   description: Public market data, authenticated customer trading, provider callbacks, and protected operations.
 servers:
-  - url: https://api.kynorix.com
+  - url: https://api.zoryqon.com
     description: Production
 security: []
 tags:
@@ -463,7 +463,7 @@ components:
     cookieAuth:
       type: apiKey
       in: cookie
-      name: kynorix_access
+      name: zoryqon_access
   parameters:
     MarketRef:
       name: marketRef

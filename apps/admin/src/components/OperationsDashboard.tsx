@@ -1,6 +1,6 @@
 'use client';
 
-import type { AuthenticatedUser, CreateMarket, Market } from '@kynorix/contracts';
+import type { AuthenticatedUser, CreateMarket, Market } from '@zoryqon/contracts';
 import { useCallback, useEffect, useState } from 'react';
 import { operationsApi } from '../lib/api';
 
@@ -162,7 +162,7 @@ export function OperationsDashboard() {
       <aside className="sidebar">
         <div className="ops-brand">
           <span>K</span>
-          <b>kynorix</b>
+          <b>zoryqon</b>
           <small>operations</small>
         </div>
         <nav>

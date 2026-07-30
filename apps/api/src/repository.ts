@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type {
   AuthenticatedUser,
   Balance,
+  CompleteSetMint,
   CreateDeposit,
   CreateMarket,
   CreateWithdrawal,
@@ -10,6 +11,7 @@ import type {
   Market,
   MarketHistoryPoint,
   MarketQuery,
+  MintCompleteSet,
   Order,
   OrderQuoteRequest,
   Page,
@@ -21,8 +23,8 @@ import type {
   VerificationStatus,
   Withdrawal,
   LedgerTransaction,
-} from '@kynorix/contracts';
-import { assertBalancedPostings, basisPointsCeil, externalRef } from '@kynorix/core';
+} from '@zoryqon/contracts';
+import { assertBalancedPostings, basisPointsCeil, externalRef } from '@zoryqon/core';
 import type { PoolClient, QueryResultRow } from 'pg';
 import type { AuthPrincipal } from './auth.js';
 import type { ApiConfig } from './config.js';
@@ -31,7 +33,7 @@ import type { ProviderRegistry, VerifiedProviderEvent } from './providers.js';
 
 type SqlClient = Pick<PoolClient, 'query'>;
 
-export class KynorixRepository {
+export class ZoryqonRepository {
   constructor(
     private readonly database: Database,
     private readonly config: ApiConfig,
@@ -1121,37 +1123,103 @@ export class KynorixRepository {
     if (!principal.mfaVerified) {
       throw domainError('MFA_REQUIRED', 'MFA or passkey confirmation is required.', 403);
     }
-    const request = await this.database.query<{
-      status: string;
-      method: CreateWithdrawal['method'];
-      asset: string;
-      amount_atoms: string;
-      destination_ref: string;
-      idempotency_key: string;
-    }>(
-      `select wr.status::text, wr.method, a.symbol as asset, wr.amount_atoms::text,
-        wr.destination_ref, wr.idempotency_key
-       from public.withdrawal_requests wr join public.assets a on a.id = wr.asset_id
-       where wr.tenant_id = $1 and wr.user_id = $2 and wr.withdrawal_ref = $3`,
-      [principal.tenantId, principal.userId, withdrawalRef],
+    const claim = await this.database.transaction(
+      { tenantId: principal.tenantId, userId: principal.userId },
+      async (client) => {
+        const request = await client.query<{
+          id: string;
+          status: string;
+          method: CreateWithdrawal['method'];
+          asset: string;
+          amount_atoms: string;
+          destination_ref: string;
+          confirmation_idempotency_key: string | null;
+          provider_idempotency_key: string | null;
+        }>(
+          `select wr.id,wr.status::text,wr.method,a.symbol as asset,
+            wr.amount_atoms::text,wr.destination_ref,
+            wr.confirmation_idempotency_key,wr.provider_idempotency_key
+           from public.withdrawal_requests wr
+           join public.assets a on a.id = wr.asset_id
+           where wr.tenant_id = $1 and wr.user_id = $2 and wr.withdrawal_ref = $3
+           for update of wr`,
+          [principal.tenantId, principal.userId, withdrawalRef],
+        );
+        const row = request.rows[0];
+        if (!row) throw domainError('WITHDRAWAL_NOT_FOUND', 'Withdrawal not found.', 404);
+        if (
+          row.confirmation_idempotency_key &&
+          row.confirmation_idempotency_key !== input.idempotencyKey
+        ) {
+          throw domainError(
+            'IDEMPOTENCY_KEY_REUSED',
+            'This withdrawal was confirmed with a different idempotency key.',
+            409,
+          );
+        }
+        if (!['authentication_required', 'signing'].includes(row.status)) {
+          return null;
+        }
+        const providerIdempotencyKey =
+          row.provider_idempotency_key ?? `withdrawal-submit:${withdrawalRef}`;
+        if (row.status === 'authentication_required') {
+          await client.query(
+            `update public.withdrawal_requests
+             set status = 'signing', confirmation_idempotency_key = $2,
+               provider_idempotency_key = $3, submission_claimed_at = clock_timestamp(),
+               submission_attempts = submission_attempts + 1, last_submission_error = null
+             where id = $1`,
+            [row.id, input.idempotencyKey, providerIdempotencyKey],
+          );
+          await client.query(
+            `insert into public.withdrawals
+             (tenant_id,withdrawal_request_id,provider_ref,status)
+             values ($1,$2,'configured-payment-provider','signing')
+             on conflict (withdrawal_request_id) do nothing`,
+            [principal.tenantId, row.id],
+          );
+        } else {
+          await client.query(
+            `update public.withdrawal_requests
+             set submission_attempts = submission_attempts + 1,
+               submission_claimed_at = clock_timestamp(), last_submission_error = null
+             where id = $1`,
+            [row.id],
+          );
+        }
+        return { ...row, provider_idempotency_key: providerIdempotencyKey };
+      },
     );
-    const row = request.rows[0];
-    if (!row) throw domainError('WITHDRAWAL_NOT_FOUND', 'Withdrawal not found.', 404);
-    if (row.status !== 'authentication_required') {
+    if (!claim) {
       const list = await this.withdrawals(principal);
       return list.find((value) => value.withdrawalRef === withdrawalRef)!;
     }
-    const submission = await this.providers.createWithdrawal(withdrawalRef, principal.userRef, {
-      method: row.method,
-      asset: row.asset,
-      amountAtoms: row.amount_atoms,
-      destinationRef: row.destination_ref,
-      idempotencyKey: `${row.idempotency_key}:${input.idempotencyKey}`,
-    });
+    let submission;
+    try {
+      submission = await this.providers.createWithdrawal(withdrawalRef, principal.userRef, {
+        method: claim.method,
+        asset: claim.asset,
+        amountAtoms: claim.amount_atoms,
+        destinationRef: claim.destination_ref,
+        idempotencyKey: claim.provider_idempotency_key,
+      });
+    } catch (error) {
+      await this.database.query(
+        `update public.withdrawal_requests set last_submission_error = $4
+         where tenant_id = $1 and user_id = $2 and withdrawal_ref = $3 and status = 'signing'`,
+        [
+          principal.tenantId,
+          principal.userId,
+          withdrawalRef,
+          error instanceof Error ? error.message : 'Provider submission failed.',
+        ],
+      );
+      throw error;
+    }
     await this.database.transaction({ tenantId: principal.tenantId }, async (client) => {
       const locked = await client.query<{ id: string }>(
         `select id from public.withdrawal_requests
-         where tenant_id = $1 and withdrawal_ref = $2 and status = 'authentication_required'
+         where tenant_id = $1 and withdrawal_ref = $2 and status = 'signing'
          for update`,
         [principal.tenantId, withdrawalRef],
       );
@@ -1161,12 +1229,11 @@ export class KynorixRepository {
         locked.rows[0].id,
       ]);
       await client.query(
-        `insert into public.withdrawals
-         (tenant_id, withdrawal_request_id, provider_ref, provider_transaction_ref, status, submitted_at)
-         values ($1,$2,$3,$4,$5,clock_timestamp())
-         on conflict (withdrawal_request_id) do nothing`,
+        `update public.withdrawals
+         set provider_ref = $2, provider_transaction_ref = $3, status = $4,
+           submitted_at = coalesce(submitted_at,clock_timestamp())
+         where withdrawal_request_id = $1 and status = 'signing'`,
         [
-          principal.tenantId,
           locked.rows[0].id,
           submission.provider,
           submission.providerTransactionRef,
@@ -1204,6 +1271,226 @@ export class KynorixRepository {
       );
       return { duplicate: false };
     });
+  }
+
+  async mintCompleteSet(
+    principal: AuthPrincipal,
+    marketRef: string,
+    input: MintCompleteSet,
+  ): Promise<CompleteSetMint> {
+    const fingerprint = sha256(JSON.stringify({ marketRef, quantity: input.quantity }));
+    return this.database.transaction(
+      { tenantId: principal.tenantId, userId: principal.userId },
+      async (client) => {
+        const existing = await client.query<{
+          mint_ref: string;
+          market_ref: string;
+          market_id: string;
+          quantity: string;
+          collateral_atoms: string;
+          minted_at: string;
+        }>(
+          `select csm.mint_ref, m.market_ref, csm.market_id, csm.quantity::text,
+            csm.collateral_atoms::text, csm.minted_at::text
+           from public.complete_set_mints csm
+           join public.markets m on m.id = csm.market_id
+           where csm.tenant_id = $1 and csm.user_id = $2
+             and csm.idempotency_key = $3`,
+          [principal.tenantId, principal.userId, input.idempotencyKey],
+        );
+        if (existing.rows[0]) {
+          if (
+            (
+              await client.query<{ request_fingerprint: string }>(
+                `select request_fingerprint from public.complete_set_mints
+                 where tenant_id = $1 and user_id = $2 and idempotency_key = $3`,
+                [principal.tenantId, principal.userId, input.idempotencyKey],
+              )
+            ).rows[0]?.request_fingerprint !== fingerprint
+          ) {
+            throw domainError(
+              'IDEMPOTENCY_KEY_REUSED',
+              'This idempotency key was used for a different complete-set mint.',
+              409,
+            );
+          }
+          return completeSetMintResponse(client, existing.rows[0]);
+        }
+
+        const market = await client.query<{
+          id: string;
+          asset_id: string;
+          payout_atoms: string;
+          maximum_position_quantity: string;
+        }>(
+          `select m.id, m.collateral_asset_id as asset_id, m.payout_atoms::text,
+            m.maximum_position_quantity::text
+           from public.markets m
+           join public.product_definitions pd on pd.id = m.product_definition_id
+             and pd.status = 'approved'
+           join public.jurisdiction_policies jp on jp.id = m.jurisdiction_policy_id
+             and jp.status = 'active'
+           join public.users u on u.id = $2 and u.tenant_id = m.tenant_id
+             and u.account_status = 'active'
+             and case u.kyc_level
+               when 'unverified' then 0
+               when 'basic' then 1
+               when 'enhanced' then 2
+               when 'institution' then 3
+               else -1
+             end >= case pd.required_kyc_level
+               when 'unverified' then 0
+               when 'basic' then 1
+               when 'enhanced' then 2
+               when 'institution' then 3
+               else 2147483647
+             end
+             and u.country = any(jp.permitted_countries)
+             and not (u.country = any(jp.blocked_countries))
+           where m.tenant_id = $1 and m.market_ref = $3
+           for update of m`,
+          [principal.tenantId, principal.userId, marketRef],
+        );
+        const row = market.rows[0];
+        if (!row) {
+          throw domainError(
+            'MARKET_NOT_MINTABLE',
+            'The market or customer is not eligible for complete-set minting.',
+            409,
+          );
+        }
+        await client.query('select public.assert_binary_complete_set_market($1)', [row.id]);
+
+        const quantity = BigInt(input.quantity);
+        const existingPosition = await client.query<{ maximum_quantity: string }>(
+          `select coalesce(max(available_quantity + locked_quantity + settled_quantity), 0)::text
+             as maximum_quantity
+           from public.positions
+           where tenant_id = $1 and user_id = $2 and market_id = $3`,
+          [principal.tenantId, principal.userId, row.id],
+        );
+        const resultingPosition =
+          BigInt(existingPosition.rows[0]?.maximum_quantity ?? '0') + quantity;
+        if (resultingPosition > BigInt(row.maximum_position_quantity)) {
+          throw domainError(
+            'POSITION_LIMIT_EXCEEDED',
+            'The resulting complete-set position exceeds the market position limit.',
+            409,
+          );
+        }
+        const collateral = quantity * BigInt(row.payout_atoms);
+        const available = await ledgerAccount(
+          client,
+          principal.tenantId,
+          principal.userId,
+          row.asset_id,
+          'customer_available',
+        );
+        const locked = await ledgerAccount(
+          client,
+          principal.tenantId,
+          null,
+          row.asset_id,
+          'collateral_locked',
+        );
+        if (!available || !locked || available.balance < collateral) {
+          throw domainError(
+            'INSUFFICIENT_AVAILABLE_BALANCE',
+            'Available collateral is insufficient for this complete set.',
+            409,
+          );
+        }
+
+        const mintRef = externalRef('csm');
+        const journalId = await postJournal(client, {
+          tenantId: principal.tenantId,
+          assetId: row.asset_id,
+          transactionType: 'complete_set_mint',
+          referenceType: 'complete_set',
+          referenceRef: mintRef,
+          idempotencyKey: `complete-set:${principal.userId}:${input.idempotencyKey}`,
+          postings: [
+            {
+              accountRef: available.accountRef,
+              accountId: available.id,
+              debitAtoms: collateral,
+            },
+            {
+              accountRef: locked.accountRef,
+              accountId: locked.id,
+              creditAtoms: collateral,
+            },
+          ],
+        });
+        const mint = await client.query<{ id: string; minted_at: string }>(
+          `insert into public.complete_set_mints
+           (tenant_id,mint_ref,market_id,user_id,quantity,collateral_atoms,
+            ledger_journal_id,idempotency_key,request_fingerprint)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           returning id,minted_at::text`,
+          [
+            principal.tenantId,
+            mintRef,
+            row.id,
+            principal.userId,
+            quantity.toString(),
+            collateral.toString(),
+            journalId,
+            input.idempotencyKey,
+            fingerprint,
+          ],
+        );
+        const outcomes = await client.query<{ id: string; outcome_ref: string }>(
+          `select id,outcome_ref from public.market_outcomes
+           where market_id = $1 order by display_order for update`,
+          [row.id],
+        );
+        const baseCost = collateral / BigInt(outcomes.rows.length);
+        let allocated = 0n;
+        for (const [index, outcome] of outcomes.rows.entries()) {
+          const cost =
+            index === outcomes.rows.length - 1 ? collateral - allocated : baseCost;
+          allocated += cost;
+          const position = await client.query<{ id: string }>(
+            `insert into public.positions
+             (tenant_id,user_id,market_id,outcome_id,available_quantity,cost_atoms)
+             values ($1,$2,$3,$4,$5,$6)
+             on conflict (user_id,market_id,outcome_id) do update
+             set available_quantity = public.positions.available_quantity + excluded.available_quantity,
+               cost_atoms = public.positions.cost_atoms + excluded.cost_atoms,
+               updated_at = clock_timestamp()
+             returning id`,
+            [
+              principal.tenantId,
+              principal.userId,
+              row.id,
+              outcome.id,
+              quantity.toString(),
+              cost.toString(),
+            ],
+          );
+          await client.query(
+            `insert into public.position_lots
+             (position_id,trade_id,complete_set_mint_id,quantity,remaining_quantity,cost_atoms)
+             values ($1,null,$2,$3,$3,$4)`,
+            [position.rows[0]!.id, mint.rows[0]!.id, quantity.toString(), cost.toString()],
+          );
+        }
+        await emitOutbox(client, principal.tenantId, `market:${marketRef}`, 'position.updated', {
+          marketRef,
+          mintRef,
+          quantity: quantity.toString(),
+        });
+        return completeSetMintResponse(client, {
+          mint_ref: mintRef,
+          market_ref: marketRef,
+          market_id: row.id,
+          quantity: quantity.toString(),
+          collateral_atoms: collateral.toString(),
+          minted_at: mint.rows[0]!.minted_at,
+        });
+      },
+    );
   }
 
   async createMarket(principal: AuthPrincipal, input: CreateMarket): Promise<Market> {
@@ -1486,7 +1773,7 @@ export class KynorixRepository {
       const row = proposal.rows[0];
       if (!row) throw domainError('RESOLUTION_NOT_FOUND', 'Resolution proposal not found.', 404);
       marketRef = row.market_ref;
-      if (row.status === 'approved') return;
+      if (['approved_pending_dispute', 'approved'].includes(row.status)) return;
       if (row.status !== 'proposed') {
         throw domainError('RESOLUTION_NOT_OPEN', 'Resolution proposal is not open.', 409);
       }
@@ -1503,19 +1790,16 @@ export class KynorixRepository {
         [row.id, principal.userId, reason],
       );
       await client.query(
-        `update public.resolution_proposals set status = 'approved',
-          approved_at = clock_timestamp() where id = $1`,
-        [row.id],
+        `update public.resolution_proposals
+         set status = 'approved_pending_dispute', approved_at = clock_timestamp(),
+           dispute_closes_at = clock_timestamp() + make_interval(hours => $2)
+         where id = $1`,
+        [row.id, this.config.resolutionDisputeWindowHours],
       );
-      await client.query('select public.transition_market($1,$2,$3,$4,$5)', [
-        principal.tenantId,
-        marketRef,
-        'resolved',
-        principal.userId,
-        reason,
-      ]);
       await audit(client, principal, 'resolution.approve', 'resolution', proposalRef, null, {
         reason,
+        status: 'approved_pending_dispute',
+        disputeWindowHours: this.config.resolutionDisputeWindowHours,
       });
     });
     return { market: await this.getMarket(marketRef, true), proposalRef };
@@ -1888,6 +2172,35 @@ function mapWithdrawal(row: WithdrawalRow): Withdrawal {
     providerReference: row.provider_transaction_ref,
     createdAt: new Date(row.created_at).toISOString(),
     completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null,
+  };
+}
+
+async function completeSetMintResponse(
+  client: SqlClient,
+  row: {
+    mint_ref: string;
+    market_ref: string;
+    market_id: string;
+    quantity: string;
+    collateral_atoms: string;
+    minted_at: string;
+  },
+): Promise<CompleteSetMint> {
+  const outcomes = await client.query<{ outcome_ref: string }>(
+    `select outcome_ref from public.market_outcomes
+     where market_id = $1 order by display_order`,
+    [row.market_id],
+  );
+  return {
+    mintRef: row.mint_ref,
+    marketRef: row.market_ref,
+    quantity: row.quantity,
+    collateralAtoms: row.collateral_atoms,
+    outcomes: outcomes.rows.map((outcome) => ({
+      outcomeRef: outcome.outcome_ref,
+      quantity: row.quantity,
+    })),
+    mintedAt: new Date(row.minted_at).toISOString(),
   };
 }
 

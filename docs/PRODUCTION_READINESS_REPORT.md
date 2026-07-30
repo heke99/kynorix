@@ -18,17 +18,28 @@ Decision: **NO-GO**
   self-trade prevention, fee quotes, reservations, fills, journals, position
   lots, and outbox events in one database transaction.
 - Signed, idempotent payment webhooks; deposit credit journals; withdrawal
-  reservation, current-session MFA confirmation, provider submission, completion
-  and failure release boundaries.
+  reservation, current-session MFA confirmation, atomic submission claim,
+  stable provider idempotency, completion and failure release boundaries.
+- Durable scheduled-market materialisation with tenant context, independent
+  approval, canonical market children, recurrence advancement and persisted
+  worker failures.
+- Fully collateralised binary complete-set minting, cumulative position limits,
+  dispute-window finalisation and replay-safe exactly-once settlement journals.
 - Protected operations client and production mobile identifiers, OIDC PKCE,
   secure token storage, biometric prompt, and shared API contracts.
 
-## Verified in this delivery
+## Verification status
 
-- Dependency installation from the lockfile.
-- Formatting, forbidden-terminology scan, migration checksum verification,
-  TypeScript checks, unit tests, integration/e2e command wiring, and production
-  builds.
+- The repository baseline previously passed lockfile installation, formatting,
+  forbidden-terminology scanning, migration verification, TypeScript checks,
+  unit tests and production builds.
+- This financial-core completion passed the forbidden-terminology scan and the
+  two-migration filename/checksum manifest check.
+- The current delivery environment's package source returned integrity errors
+  during clean installation. Formatting, TypeScript, tests and production
+  builds for this completion therefore require a clean CI rerun.
+- The forward migration requires application and concurrency/replay testing
+  against the target PostgreSQL version.
 - No process-local financial store or customer funding fixtures in runtime code.
 
 ## Required configuration
@@ -53,18 +64,18 @@ providers. The worker additionally requires notification-provider settings.
   jurisdiction policies, fee schedules, providers, and market templates is not
   supplied.
 
-## Code blockers
+## Remaining engineering blockers
 
-- The scheduled-market worker records due schedules but does not yet materialize
-  a complete approved market through the canonical creation transaction.
-- Full automated price-index calculation, dispute-window enforcement, and
-  exactly-once settlement orchestration are not complete runtime flows.
+- Full automated price-index calculation still needs its licensed
+  target-provider adapter and governance rules.
 - Admin modules beyond overview, market lifecycle, and resolution require full
   workflow screens and API actions.
 - Database-backed concurrency, webhook replay, settlement replay, tenant
   isolation, browser, and device integration suites require target
   infrastructure and are not yet implemented as executable tests.
+- CI must complete a clean install, formatting, TypeScript, tests and production
+  builds for the new forward migration and runtime flows.
 
-Kynorix must remain unavailable for production customer funds until the code
+Zoryqon must remain unavailable for production customer funds until the code
 blockers are completed and every applicable gate has dated, independently
 approved evidence.

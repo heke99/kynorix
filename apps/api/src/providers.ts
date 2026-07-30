@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { CreateDeposit, CreateWithdrawal, StartVerification } from '@kynorix/contracts';
+import type { CreateDeposit, CreateWithdrawal, StartVerification } from '@zoryqon/contracts';
 import type { ApiConfig, ProviderConfig } from './config.js';
 
 export interface ProviderDepositSession {
@@ -126,7 +126,7 @@ class HttpProvider {
         authorization: `Bearer ${this.config.apiKey}`,
         'content-type': 'application/json',
         'idempotency-key': idempotencyKey,
-        'user-agent': 'Kynorix/1.0',
+        'user-agent': 'Zoryqon/1.0',
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(15_000),

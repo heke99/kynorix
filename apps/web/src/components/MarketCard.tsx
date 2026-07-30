@@ -1,9 +1,9 @@
 'use client';
 
-import type { Market, MarketHistoryPoint } from '@kynorix/contracts';
+import type { Market, MarketHistoryPoint } from '@zoryqon/contracts';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { formatAtoms, formatDate, formatProbability, kynorixApi } from '../lib/api';
+import { formatAtoms, formatDate, formatProbability, zoryqonApi } from '../lib/api';
 
 export function MarketCard({ market }: { market: Market }) {
   const primary = market.outcomes[0];
@@ -12,7 +12,7 @@ export function MarketCard({ market }: { market: Market }) {
 
   useEffect(() => {
     if (!primary) return;
-    void kynorixApi
+    void zoryqonApi
       .history(market.marketRef, primary.outcomeRef, '1D')
       .then(setHistory)
       .catch(() => setHistory([]));

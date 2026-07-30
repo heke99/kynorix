@@ -1,4 +1,4 @@
-import type { OrderSide, TimeInForce } from '@kynorix/contracts';
+import type { OrderSide, TimeInForce } from '@zoryqon/contracts';
 import { externalRef } from './id.js';
 
 export interface EngineOrder {

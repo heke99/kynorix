@@ -1,14 +1,14 @@
 'use client';
 
-import type { Deposit, Withdrawal } from '@kynorix/contracts';
+import type { Deposit, Withdrawal } from '@zoryqon/contracts';
 import { useEffect, useState } from 'react';
-import { formatDate, kynorixApi } from '../../../lib/api';
+import { formatDate, zoryqonApi } from '../../../lib/api';
 
 export default function TransactionsPage() {
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
   useEffect(() => {
-    void Promise.all([kynorixApi.deposits(), kynorixApi.withdrawals()]).then(([a, b]) => {
+    void Promise.all([zoryqonApi.deposits(), zoryqonApi.withdrawals()]).then(([a, b]) => {
       setDeposits(a);
       setWithdrawals(b);
     });

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { kynorixApi } from '../../../lib/api';
+import { zoryqonApi } from '../../../lib/api';
 
 export default function DepositPage() {
   const [asset, setAsset] = useState('USD');
@@ -15,7 +15,7 @@ export default function DepositPage() {
     setBusy(true);
     setResult('');
     try {
-      const response = await kynorixApi.createDeposit({
+      const response = await zoryqonApi.createDeposit({
         asset,
         method,
         amountAtoms: amount,

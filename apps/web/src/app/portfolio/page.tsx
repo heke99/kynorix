@@ -1,20 +1,20 @@
 'use client';
 
-import type { Position } from '@kynorix/contracts';
+import type { Position } from '@zoryqon/contracts';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { formatAtoms, kynorixApi } from '../../lib/api';
+import { formatAtoms, zoryqonApi } from '../../lib/api';
 
 export default function PortfolioPage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [error, setError] = useState('');
   useEffect(() => {
-    void kynorixApi
+    void zoryqonApi
       .positions()
       .then(setPositions)
       .catch((cause: unknown) => {
         const value = cause as Error & { status?: number };
-        if (value.status === 401) window.location.assign(kynorixApi.loginUrl('/portfolio'));
+        if (value.status === 401) window.location.assign(zoryqonApi.loginUrl('/portfolio'));
         else setError(value.message);
       });
   }, []);

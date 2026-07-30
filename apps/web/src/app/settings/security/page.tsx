@@ -1,5 +1,5 @@
 import { InfoPage } from '../../../components/InfoPage';
-import { kynorixApi } from '../../../lib/api';
+import { zoryqonApi } from '../../../lib/api';
 export default function SecurityPage() {
   return (
     <InfoPage eyebrow="Account protection" title="Security">
@@ -8,7 +8,7 @@ export default function SecurityPage() {
         Manage TOTP, passkeys, recovery codes and security-method changes through the connected
         identity provider. Withdrawal cooldowns are enforced after material security changes.
       </p>
-      <a className="primary-button" href={kynorixApi.accountSecurityUrl()}>
+      <a className="primary-button" href={zoryqonApi.accountSecurityUrl()}>
         Manage security methods
       </a>
     </InfoPage>

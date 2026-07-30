@@ -1,8 +1,8 @@
 {
-  "name": "kynorix",
+  "name": "zoryqon",
   "version": "0.1.0",
   "private": true,
-  "description": "Kynorix production event exchange platform.",
+  "description": "Zoryqon production event exchange platform.",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,14 +13,14 @@
   },
   "scripts": {
     "build": "npm run build:packages && npm run build:apps",
-    "build:apps": "npm run build -w @kynorix/api && npm run build -w @kynorix/worker && npm run build -w @kynorix/web && npm run build -w @kynorix/admin && npm run build -w @kynorix/mobile",
-    "build:packages": "npm run build -w @kynorix/contracts && npm run build -w @kynorix/core && npm run build -w @kynorix/database",
+    "build:apps": "npm run build -w @zoryqon/api && npm run build -w @zoryqon/worker && npm run build -w @zoryqon/web && npm run build -w @zoryqon/admin && npm run build -w @zoryqon/mobile",
+    "build:packages": "npm run build -w @zoryqon/contracts && npm run build -w @zoryqon/core && npm run build -w @zoryqon/database",
     "db:migrations:check": "node scripts/check-migrations.mjs",
     "predev": "npm run build:packages",
-    "dev": "concurrently -n api,worker,web,admin -c cyan,green,magenta,yellow \"npm run dev -w @kynorix/api\" \"npm run dev -w @kynorix/worker\" \"npm run dev -w @kynorix/web\" \"npm run dev -w @kynorix/admin\"",
+    "dev": "concurrently -n api,worker,web,admin -c cyan,green,magenta,yellow \"npm run dev -w @zoryqon/api\" \"npm run dev -w @zoryqon/worker\" \"npm run dev -w @zoryqon/web\" \"npm run dev -w @zoryqon/admin\"",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "dev:mobile": "npm run start -w @kynorix/mobile",
+    "dev:mobile": "npm run start -w @zoryqon/mobile",
     "format:check": "prettier --check .",
     "lint": "npm run lint --workspaces --if-present",
     "test": "vitest run",

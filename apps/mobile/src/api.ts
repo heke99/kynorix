@@ -13,12 +13,12 @@ import type {
   PlaceOrder,
   Position,
   Withdrawal,
-} from '@kynorix/contracts';
+} from '@zoryqon/contracts';
 import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 
-const ACCESS_TOKEN_KEY = 'kynorix.access-token';
-const REFRESH_TOKEN_KEY = 'kynorix.refresh-token';
+const ACCESS_TOKEN_KEY = 'zoryqon.access-token';
+const REFRESH_TOKEN_KEY = 'zoryqon.refresh-token';
 
 function apiUrl(): string {
   const value = process.env.EXPO_PUBLIC_API_URL;

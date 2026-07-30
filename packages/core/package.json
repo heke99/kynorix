@@ -1,5 +1,5 @@
 {
-  "name": "@kynorix/core",
+  "name": "@zoryqon/core",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -31,7 +31,7 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@kynorix/contracts": "*"
+    "@zoryqon/contracts": "*"
   },
   "devDependencies": {
     "typescript": "^5.9.0",

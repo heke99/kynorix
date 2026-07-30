@@ -7,12 +7,12 @@ import type {
   Outcome,
   Position,
   Trade,
-} from '@kynorix/contracts';
+} from '@zoryqon/contracts';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { PriceChart } from '../../../components/PriceChart';
 import { TradeTicket } from '../../../components/TradeTicket';
-import { formatAtoms, formatDate, formatProbability, kynorixApi } from '../../../lib/api';
+import { formatAtoms, formatDate, formatProbability, zoryqonApi } from '../../../lib/api';
 
 type Range = '1H' | '6H' | '1D' | '1W' | '1M' | 'ALL';
 
@@ -20,7 +20,7 @@ export default function MarketPage() {
   const { marketRef } = useParams<{ marketRef: string }>();
   const [market, setMarket] = useState<Market>();
   const [outcome, setOutcome] = useState<Outcome>();
-  const [book, setBook] = useState<Awaited<ReturnType<typeof kynorixApi.orderbook>>>();
+  const [book, setBook] = useState<Awaited<ReturnType<typeof zoryqonApi.orderbook>>>();
   const [trades, setTrades] = useState<Trade[]>([]);
   const [history, setHistory] = useState<MarketHistoryPoint[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -29,16 +29,16 @@ export default function MarketPage() {
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
-    const loadedMarket = market ?? (await kynorixApi.market(marketRef));
+    const loadedMarket = market ?? (await zoryqonApi.market(marketRef));
     const selected = outcome ?? loadedMarket.outcomes[0]!;
     const [nextBook, nextTrades, nextHistory] = await Promise.all([
-      kynorixApi.orderbook(marketRef, selected.outcomeRef),
-      kynorixApi.trades(marketRef),
-      kynorixApi.history(marketRef, selected.outcomeRef, range),
+      zoryqonApi.orderbook(marketRef, selected.outcomeRef),
+      zoryqonApi.trades(marketRef),
+      zoryqonApi.history(marketRef, selected.outcomeRef, range),
     ]);
     const [nextOrders, nextPositions] = await Promise.all([
-      kynorixApi.orders().catch(() => []),
-      kynorixApi.positions().catch(() => []),
+      zoryqonApi.orders().catch(() => []),
+      zoryqonApi.positions().catch(() => []),
     ]);
     setMarket(loadedMarket);
     setOutcome(selected);
@@ -204,7 +204,7 @@ export default function MarketPage() {
                 {order.remainingQuantity}/{order.quantity} · {order.priceAtoms}
               </strong>
               {(order.status === 'open' || order.status === 'partially_filled') && (
-                <button onClick={() => void kynorixApi.cancelOrder(order.orderRef).then(refresh)}>
+                <button onClick={() => void zoryqonApi.cancelOrder(order.orderRef).then(refresh)}>
                   Cancel
                 </button>
               )}

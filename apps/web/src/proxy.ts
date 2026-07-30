@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from 'next/server';
 
 export function proxy(request: NextRequest) {
-  const hasAccessCookie = Boolean(request.cookies.get('kynorix_access')?.value);
-  const hasSessionCookie = Boolean(request.cookies.get('kynorix_session')?.value);
+  const hasAccessCookie = Boolean(request.cookies.get('zoryqon_access')?.value);
+  const hasSessionCookie = Boolean(request.cookies.get('zoryqon_session')?.value);
   if (hasAccessCookie && hasSessionCookie) return NextResponse.next();
 
   const login = new URL('/login', request.url);

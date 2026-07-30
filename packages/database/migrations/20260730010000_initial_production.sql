@@ -1426,4 +1426,4 @@ create policy tenant_ledger_entries on public.ledger_entries using (tenant_id = 
 create policy owner_notifications on public.notifications using (tenant_id = public.current_tenant_id() and user_id = public.current_user_id());
 create policy tenant_idempotency on public.idempotency_records using (tenant_id = public.current_tenant_id());
 
-comment on schema public is 'Kynorix authoritative production schema. Bootstrap data is created only through explicit audited operator commands.';
+comment on schema public is 'Zoryqon authoritative production schema. Bootstrap data is created only through explicit audited operator commands.';

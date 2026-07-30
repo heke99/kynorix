@@ -1,4 +1,4 @@
-import type { ProductStatus, ProductType } from '@kynorix/contracts';
+import type { ProductStatus, ProductType } from '@zoryqon/contracts';
 
 export interface ProductPolicy {
   productRef: string;

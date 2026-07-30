@@ -1,8 +1,8 @@
 'use client';
 
-import type { CreateWithdrawal, Withdrawal } from '@kynorix/contracts';
+import type { CreateWithdrawal, Withdrawal } from '@zoryqon/contracts';
 import { useState } from 'react';
-import { kynorixApi } from '../../../lib/api';
+import { zoryqonApi } from '../../../lib/api';
 
 export default function WithdrawPage() {
   const [input, setInput] = useState<CreateWithdrawal>({
@@ -21,7 +21,7 @@ export default function WithdrawPage() {
     const payload = { ...input, idempotencyKey: crypto.randomUUID() };
     try {
       setInput(payload);
-      setCreated(await kynorixApi.createWithdrawal(payload));
+      setCreated(await zoryqonApi.createWithdrawal(payload));
     } catch (cause) {
       setResult(cause instanceof Error ? cause.message : 'Withdrawal could not be created.');
     } finally {
@@ -33,7 +33,7 @@ export default function WithdrawPage() {
     setBusy(true);
     try {
       setCreated(
-        await kynorixApi.confirmWithdrawal(created.withdrawalRef, {
+        await zoryqonApi.confirmWithdrawal(created.withdrawalRef, {
           idempotencyKey: crypto.randomUUID(),
         }),
       );

@@ -11,7 +11,7 @@ export class Database {
       connectionString: config.databaseUrl,
       max: 20,
       statement_timeout: 15_000,
-      application_name: 'kynorix-api',
+      application_name: 'zoryqon-api',
       ssl:
         config.databaseSsl === 'disable'
           ? false

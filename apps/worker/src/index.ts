@@ -4,6 +4,7 @@ import pg, { type PoolClient } from 'pg';
 import { z } from 'zod';
 
 const EnvironmentSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   DATABASE_URL: z.string().url(),
   DATABASE_SSL: z.enum(['disable', 'require', 'verify-full']).default('require'),
   EVENT_BROKER_URL: z.string().min(1),
@@ -12,6 +13,25 @@ const EnvironmentSchema = z.object({
   NOTIFICATION_PROVIDER_BASE_URL: z.string().url(),
   NOTIFICATION_PROVIDER_API_KEY: z.string().min(1),
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(1_000),
+});
+const ScheduledMarketDefinitionSchema = z.object({
+  feeScheduleRef: z.string().min(1),
+  jurisdictionPolicyRef: z.string().min(1),
+  collateralAsset: z.string().min(1),
+  displayTimezone: z.string().min(1),
+  openOffsetMinutes: z.number().int().min(0).default(0),
+  tradingDurationMinutes: z.number().int().positive(),
+  resolutionOffsetMinutes: z.number().int().min(0),
+  scheduleIntervalMinutes: z.number().int().min(5).default(1_440),
+  payoutAtoms: z.string().regex(/^[1-9]\d*$/),
+  tickAtoms: z.string().regex(/^[1-9]\d*$/),
+  minimumOrderQuantity: z.string().regex(/^[1-9]\d*$/),
+  maximumPositionQuantity: z.string().regex(/^[1-9]\d*$/),
+  riskClass: z.enum(['low', 'standard', 'high', 'restricted']),
+  outcomes: z.array(z.object({ label: z.string().min(1).max(100) })).length(2),
+  rules: z.string().min(50),
+  primarySource: z.string().url(),
+  backupSource: z.string().url().optional(),
 });
 const parsed = EnvironmentSchema.safeParse(process.env);
 if (!parsed.success) {
@@ -22,10 +42,17 @@ if (!parsed.success) {
   );
 }
 const config = parsed.data;
+if (config.NODE_ENV === 'production') {
+  assertProductionEndpoint('PRICE_PROVIDER_BASE_URL', config.PRICE_PROVIDER_BASE_URL);
+  assertProductionEndpoint(
+    'NOTIFICATION_PROVIDER_BASE_URL',
+    config.NOTIFICATION_PROVIDER_BASE_URL,
+  );
+}
 const { Pool } = pg;
 const pool = new Pool({
   connectionString: config.DATABASE_URL,
-  application_name: 'kynorix-worker',
+  application_name: 'zoryqon-worker',
   ssl:
     config.DATABASE_SSL === 'disable'
       ? false
@@ -33,7 +60,7 @@ const pool = new Pool({
 });
 const broker = new URL(config.EVENT_BROKER_URL);
 const kafka = new Kafka({
-  clientId: 'kynorix-worker',
+  clientId: 'zoryqon-worker',
   brokers: [`${broker.hostname}:${broker.port || '9092'}`],
 });
 const producer = kafka.producer({ allowAutoTopicCreation: false, idempotent: true });
@@ -54,6 +81,9 @@ while (!stopping) {
     runJob('price-index-calculation', calculatePriceIndexes),
     runJob('market-scheduling', generateScheduledMarkets),
     runJob('market-opening', openScheduledMarkets),
+    runJob('market-closing', closeExpiredMarkets),
+    runJob('resolution-finalisation', finaliseApprovedResolutions),
+    runJob('market-settlement', settleResolvedMarkets),
     runJob('outbox-publication', publishOutbox),
     runJob('notification-delivery', deliverNotifications),
     runJob('reconciliation', runReconciliation),
@@ -158,36 +188,312 @@ async function generateScheduledMarkets(): Promise<void> {
      join public.market_templates mt on mt.id = mts.market_template_id
      where mts.enabled and mt.status = 'approved'
        and mts.next_run_at <= clock_timestamp()
-     order by mts.next_run_at for update skip locked limit 20`,
+       and (mts.locked_at is null or mts.locked_at < clock_timestamp() - interval '10 minutes')
+     order by mts.next_run_at limit 20`,
   );
   for (const schedule of due.rows) {
-    await withTransaction(async (client) => {
-      const locked = await client.query(
-        `select mts.id from public.market_template_schedules mts
-         where mts.id = $1 and mts.enabled and mts.next_run_at <= clock_timestamp()
-         for update`,
-        [schedule.id],
-      );
-      if (!locked.rowCount) return;
-      await client.query(
-        `insert into public.audit_log
-         (event_ref, actor_ref, actor_roles, action, resource_type, resource_ref,
-          new_value, occurred_at)
-         values ($1,'market-scheduler',array['service'],'market.schedule.due',
-          'market_template_schedule',$2,jsonb_build_object('status','awaiting_canonical_creation'),
-          clock_timestamp())`,
-        [
-          `aud_${createHash('sha256').update(`${schedule.id}:${Date.now()}`).digest('hex').slice(0, 24)}`,
+    let job:
+      | {
+          run_id: string;
+          tenant_id: string;
+          scheduled_for: string;
+          template_id: string;
+          title_pattern: string;
+          question_pattern: string;
+          product_definition_id: string;
+          category_id: string;
+          price_index_ref: string | null;
+          rule_definition: unknown;
+          approved_by: string;
+        }
+      | undefined;
+    try {
+      job = await withTransaction(async (client) => {
+        const claimed = await client.query<{
+          tenant_id: string;
+          scheduled_for: string;
+          template_id: string;
+          title_pattern: string;
+          question_pattern: string;
+          product_definition_id: string;
+          category_id: string;
+          price_index_ref: string | null;
+          rule_definition: unknown;
+          approved_by: string;
+        }>(
+          `select mt.tenant_id,mts.next_run_at::text as scheduled_for,
+            mt.id as template_id,mt.title_pattern,mt.question_pattern,
+            mt.product_definition_id,mt.category_id,mt.price_index_ref,
+            mt.rule_definition,mt.approved_by
+           from public.market_template_schedules mts
+           join public.market_templates mt on mt.id = mts.market_template_id
+           where mts.id = $1 and mts.enabled and mt.status = 'approved'
+             and mt.approved_by is not null and mts.next_run_at <= clock_timestamp()
+             and (mts.locked_at is null
+               or mts.locked_at < clock_timestamp() - interval '10 minutes')
+           for update of mts`,
+          [schedule.id],
+        );
+        const row = claimed.rows[0];
+        if (!row) return undefined;
+        await setTenantContext(client, row.tenant_id);
+        const run = await client.query<{ id: string }>(
+          `insert into public.market_schedule_runs
+           (schedule_id,tenant_id,scheduled_for,status,worker_ref)
+           values ($1,$2,$3,'processing',$4)
+           on conflict (schedule_id,scheduled_for) do nothing returning id`,
+          [schedule.id, row.tenant_id, row.scheduled_for, workerRef],
+        );
+        if (!run.rows[0]) return undefined;
+        await client.query(
+          `update public.market_template_schedules
+           set locked_at = clock_timestamp(),locked_by = $2,
+             last_scheduled_for = $3,last_run_at = clock_timestamp(),
+             last_run_status = 'processing',last_error = null,
+             run_attempt_count = run_attempt_count + 1,
+             next_run_at = $3::timestamptz + make_interval(mins =>
+               case when (select rule_definition->>'scheduleIntervalMinutes'
+                          from public.market_templates where id = market_template_id)
+                          ~ '^[0-9]+$'
+                 then greatest(5,(select (rule_definition->>'scheduleIntervalMinutes')::integer
+                                  from public.market_templates where id = market_template_id))
+                 else 1440 end)
+           where id = $1`,
+          [schedule.id, workerRef, row.scheduled_for],
+        );
+        return { ...row, run_id: run.rows[0].id };
+      });
+      if (!job) continue;
+      const definition = ScheduledMarketDefinitionSchema.parse(job.rule_definition);
+      await materialiseScheduledMarket(schedule.id, job, definition);
+    } catch (error) {
+      if (job) {
+        await markScheduleFailure(
           schedule.id,
-        ],
+          job.run_id,
+          job.tenant_id,
+          error instanceof Error ? error.message : 'Scheduled market materialisation failed.',
+        );
+      }
+    }
+  }
+}
+
+async function materialiseScheduledMarket(
+  scheduleId: string,
+  job: {
+    run_id: string;
+    tenant_id: string;
+    scheduled_for: string;
+    template_id: string;
+    title_pattern: string;
+    question_pattern: string;
+    product_definition_id: string;
+    category_id: string;
+    price_index_ref: string | null;
+    approved_by: string;
+  },
+  definition: z.infer<typeof ScheduledMarketDefinitionSchema>,
+): Promise<void> {
+  await withTransaction(async (client) => {
+    await setTenantContext(client, job.tenant_id);
+    const run = await client.query(
+      `select 1 from public.market_schedule_runs
+       where id = $1 and tenant_id = $2 and status = 'processing' for update`,
+      [job.run_id, job.tenant_id],
+    );
+    if (!run.rowCount) return;
+    const references = await client.query<{
+      policy_id: string;
+      fee_id: string;
+      asset_id: string;
+      creator_id: string;
+    }>(
+      `select jp.id as policy_id,fs.id as fee_id,a.id as asset_id,u.id as creator_id
+       from public.jurisdiction_policies jp
+       cross join public.fee_schedules fs
+       cross join public.assets a
+       join lateral (
+         select candidate.id from public.users candidate
+         where candidate.tenant_id = $1 and candidate.account_status = 'active'
+           and candidate.id <> $2
+           and exists (
+             select 1 from public.user_roles ur
+             join public.roles r on r.role_key = ur.role_key
+             where ur.user_id = candidate.id and ur.revoked_at is null and r.staff_role
+           )
+         order by candidate.created_at limit 1
+       ) u on true
+       where jp.policy_ref = $3 and jp.status = 'active'
+         and fs.tenant_id = $1 and fs.fee_schedule_ref = $4 and fs.status = 'active'
+         and a.symbol = $5 and a.enabled
+       order by jp.version desc,fs.version desc limit 1`,
+      [
+        job.tenant_id,
+        job.approved_by,
+        definition.jurisdictionPolicyRef,
+        definition.feeScheduleRef,
+        definition.collateralAsset,
+      ],
+    );
+    const refs = references.rows[0];
+    if (!refs) throw new Error('Scheduled market references or independent creator are missing.');
+    const scheduledFor = new Date(job.scheduled_for);
+    const opensAt = new Date(scheduledFor.getTime() + definition.openOffsetMinutes * 60_000);
+    const closesAt = new Date(opensAt.getTime() + definition.tradingDurationMinutes * 60_000);
+    const resolutionAt = new Date(
+      closesAt.getTime() + definition.resolutionOffsetMinutes * 60_000,
+    );
+    const date = scheduledFor.toISOString().slice(0, 10);
+    const title = job.title_pattern.replaceAll('{{date}}', date);
+    const question = job.question_pattern.replaceAll('{{date}}', date);
+    const marketRef = deterministicRef('mkt', job.run_id);
+    const market = await client.query<{ id: string }>(
+      `insert into public.markets
+       (tenant_id,market_ref,product_definition_id,category_id,template_id,
+        jurisdiction_policy_id,fee_schedule_id,title,question,display_timezone,
+        opens_at,closes_at,resolution_at,collateral_asset_id,payout_atoms,tick_atoms,
+        minimum_order_quantity,maximum_position_quantity,risk_class,status,
+        immutable_rule_version,approval_state,created_by,approved_by,approved_at)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+         $19,'scheduled',$20,'approved',$21,$22,clock_timestamp())
+       returning id`,
+      [
+        job.tenant_id,
+        marketRef,
+        job.product_definition_id,
+        job.category_id,
+        job.template_id,
+        refs.policy_id,
+        refs.fee_id,
+        title,
+        question,
+        definition.displayTimezone,
+        opensAt.toISOString(),
+        closesAt.toISOString(),
+        resolutionAt.toISOString(),
+        refs.asset_id,
+        definition.payoutAtoms,
+        definition.tickAtoms,
+        definition.minimumOrderQuantity,
+        definition.maximumPositionQuantity,
+        definition.riskClass,
+        `template:${job.template_id}:${job.run_id}`,
+        refs.creator_id,
+        job.approved_by,
+      ],
+    );
+    const marketId = market.rows[0]!.id;
+    await client.query(
+      `insert into public.market_rules
+       (market_id,version,rules,tie_behavior,cancellation_behavior,void_behavior,content_hash)
+       values ($1,1,$2,'void','cancel_open_orders','refund_collateral',$3)`,
+      [marketId, definition.rules, sha256(definition.rules)],
+    );
+    await client.query(
+      `insert into public.market_sources
+       (market_id,source_type,source_uri,source_name,priority)
+       values ($1,'primary',$2,'Primary resolution source',1)`,
+      [marketId, definition.primarySource],
+    );
+    if (definition.backupSource) {
+      await client.query(
+        `insert into public.market_sources
+         (market_id,source_type,source_uri,source_name,priority)
+         values ($1,'backup',$2,'Backup resolution source',2)`,
+        [marketId, definition.backupSource],
+      );
+    }
+    if (job.price_index_ref) {
+      const index = await client.query(
+        `select 1 from public.price_indexes where index_ref = $1 and status = 'active'`,
+        [job.price_index_ref],
+      );
+      if (!index.rowCount) throw new Error('The template price index is not active.');
+      await client.query(
+        `insert into public.market_sources
+         (market_id,source_type,source_uri,source_name,priority)
+         values ($1,'price_index',$2,'Approved price index',1)`,
+        [marketId, job.price_index_ref],
+      );
+    }
+    for (const [index, outcome] of definition.outcomes.entries()) {
+      const inserted = await client.query<{ id: string }>(
+        `insert into public.market_outcomes
+         (tenant_id,market_id,outcome_ref,label,display_order)
+         values ($1,$2,$3,$4,$5) returning id`,
+        [job.tenant_id, marketId, deterministicRef('out', `${job.run_id}:${index}`), outcome.label, index],
       );
       await client.query(
-        `update public.market_template_schedules
-         set next_run_at = clock_timestamp() + interval '1 day' where id = $1`,
-        [schedule.id],
+        `insert into public.market_book_sequences (market_id,outcome_id) values ($1,$2)`,
+        [marketId, inserted.rows[0]!.id],
       );
-    });
-  }
+    }
+    await client.query(
+      `insert into public.market_versions (market_id,version,snapshot,content_hash,created_by)
+       values ($1,1,$2,$3,$4)`,
+      [marketId, definition, sha256(JSON.stringify(definition)), refs.creator_id],
+    );
+    await client.query(
+      `insert into public.market_status_events
+       (market_id,from_status,to_status,actor_id,reason)
+       values
+        ($1,null,'draft',$2,'Materialised from an approved schedule.'),
+        ($1,'draft','under_review',$2,'Submitted by the scheduled-market service.'),
+        ($1,'under_review','approved',$3,'Inherited independent template approval.'),
+        ($1,'approved','scheduled',$3,'Scheduled occurrence created atomically.')`,
+      [marketId, refs.creator_id, job.approved_by],
+    );
+    await client.query(
+      `update public.market_schedule_runs
+       set status = 'succeeded',market_id = $2,completed_at = clock_timestamp(),last_error = null
+       where id = $1`,
+      [job.run_id, marketId],
+    );
+    await client.query(
+      `update public.market_template_schedules
+       set last_run_status = 'succeeded',last_error = null,locked_at = null,locked_by = null
+       where id = $1 and locked_by = $2`,
+      [scheduleId, workerRef],
+    );
+    await client.query(
+      `insert into public.audit_log
+       (tenant_id,event_ref,actor_ref,actor_roles,action,resource_type,resource_ref,new_value)
+       values ($1,$2,'market-scheduler',array['service'],'market.schedule.materialised',
+         'market',$3,jsonb_build_object('schedule_id',$4,'scheduled_for',$5))`,
+      [
+        job.tenant_id,
+        deterministicRef('aud', job.run_id),
+        marketRef,
+        scheduleId,
+        job.scheduled_for,
+      ],
+    );
+  });
+}
+
+async function markScheduleFailure(
+  scheduleId: string,
+  runId: string,
+  tenantId: string,
+  message: string,
+): Promise<void> {
+  await withTransaction(async (client) => {
+    await setTenantContext(client, tenantId);
+    await client.query(
+      `update public.market_schedule_runs
+       set status = 'failed',completed_at = clock_timestamp(),last_error = left($2,2000)
+       where id = $1 and status = 'processing'`,
+      [runId, message],
+    );
+    await client.query(
+      `update public.market_template_schedules
+       set last_run_status = 'failed',last_error = left($2,2000),
+         locked_at = null,locked_by = null
+       where id = $1`,
+      [scheduleId, message],
+    );
+  });
 }
 
 async function calculatePriceIndexes(): Promise<void> {
@@ -296,6 +602,7 @@ async function openScheduledMarkets(): Promise<void> {
   );
   for (const market of due.rows) {
     await withTransaction(async (client) => {
+      await setTenantContext(client, market.tenant_id);
       const locked = await client.query(
         `select 1 from public.markets where tenant_id = $1 and market_ref = $2
          and status = 'scheduled' for update`,
@@ -318,6 +625,447 @@ async function openScheduledMarkets(): Promise<void> {
       ]);
     });
   }
+}
+
+async function closeExpiredMarkets(): Promise<void> {
+  const due = await pool.query<{
+    tenant_id: string;
+    market_ref: string;
+    actor_id: string;
+  }>(
+    `select tenant_id,market_ref,coalesce(approved_by,created_by) as actor_id
+     from public.markets
+     where status in ('open','suspended') and closes_at <= clock_timestamp()
+     order by closes_at limit 50`,
+  );
+  for (const market of due.rows) {
+    try {
+      await withTransaction(async (client) => {
+        await setTenantContext(client, market.tenant_id);
+        const lockedMarket = await client.query<{
+          id: string;
+          asset_id: string;
+          status: string;
+        }>(
+          `select id,collateral_asset_id as asset_id,status::text
+           from public.markets
+           where tenant_id = $1 and market_ref = $2
+             and status in ('open','suspended') and closes_at <= clock_timestamp()
+           for update`,
+          [market.tenant_id, market.market_ref],
+        );
+        const current = lockedMarket.rows[0];
+        if (!current) return;
+        await client.query('select public.transition_market($1,$2,$3,$4,$5)', [
+          market.tenant_id,
+          market.market_ref,
+          'closing',
+          market.actor_id,
+          'The approved trading window ended.',
+        ]);
+        const orders = await client.query<{
+          id: string;
+          order_ref: string;
+          user_id: string;
+          market_id: string;
+          outcome_id: string;
+          side: 'buy' | 'sell';
+          amount_atoms: string;
+          quantity: string;
+        }>(
+          `select o.id,o.order_ref,o.user_id,o.market_id,o.outcome_id,o.side::text,
+            cr.amount_atoms::text,cr.quantity::text
+           from public.orders o
+           join public.collateral_reservations cr on cr.order_id = o.id
+           where o.market_id = $1 and o.status in ('open','partially_filled')
+           order by o.book_sequence for update of o,cr`,
+          [current.id],
+        );
+        for (const order of orders.rows) {
+          if (order.side === 'buy' && BigInt(order.amount_atoms) > 0n) {
+            const locked = await workerLedgerAccount(
+              client,
+              market.tenant_id,
+              order.user_id,
+              current.asset_id,
+              'customer_locked',
+            );
+            const available = await workerLedgerAccount(
+              client,
+              market.tenant_id,
+              order.user_id,
+              current.asset_id,
+              'customer_available',
+            );
+            if (!locked || !available) throw new Error('Order release accounts are incomplete.');
+            await postWorkerJournal(client, {
+              tenantId: market.tenant_id,
+              assetId: current.asset_id,
+              transactionType: 'market_close_reservation_release',
+              referenceType: 'order',
+              referenceRef: order.order_ref,
+              idempotencyKey: `market-close-release:${order.order_ref}`,
+              postings: [
+                { accountId: locked.id, debitAtoms: BigInt(order.amount_atoms) },
+                { accountId: available.id, creditAtoms: BigInt(order.amount_atoms) },
+              ],
+            });
+          }
+          if (order.side === 'sell' && BigInt(order.quantity) > 0n) {
+            const released = await client.query(
+              `update public.positions
+               set available_quantity = available_quantity + $5,
+                 locked_quantity = locked_quantity - $5,
+                 updated_at = clock_timestamp()
+               where tenant_id = $1 and user_id = $2 and market_id = $3
+                 and outcome_id = $4 and locked_quantity >= $5`,
+              [
+                market.tenant_id,
+                order.user_id,
+                order.market_id,
+                order.outcome_id,
+                order.quantity,
+              ],
+            );
+            if (released.rowCount !== 1) {
+              throw new Error('A sell reservation could not be released exactly once.');
+            }
+          }
+          await client.query(
+            `update public.orders set remaining_quantity = 0,status = 'expired',
+              updated_at = clock_timestamp() where id = $1`,
+            [order.id],
+          );
+          await client.query(
+            `update public.collateral_reservations
+             set amount_atoms = 0,quantity = 0,status = 'released',
+               released_at = clock_timestamp() where order_id = $1`,
+            [order.id],
+          );
+        }
+        for (const [status, reason] of [
+          ['closed', 'All open orders and reservations were closed atomically.'],
+          ['resolution_pending', 'The market is ready for retained resolution evidence.'],
+        ] as const) {
+          await client.query('select public.transition_market($1,$2,$3,$4,$5)', [
+            market.tenant_id,
+            market.market_ref,
+            status,
+            market.actor_id,
+            reason,
+          ]);
+        }
+      });
+    } catch (error) {
+      workerError('market-closing', error, market.market_ref);
+    }
+  }
+}
+
+async function finaliseApprovedResolutions(): Promise<void> {
+  const due = await pool.query<{
+    tenant_id: string;
+    proposal_id: string;
+    market_ref: string;
+    officer_id: string;
+  }>(
+    `select rp.tenant_id,rp.id as proposal_id,m.market_ref,ra.officer_id
+     from public.resolution_proposals rp
+     join public.markets m on m.id = rp.market_id
+     join lateral (
+       select officer_id from public.resolution_approvals
+       where proposal_id = rp.id and decision = 'approve'
+       order by decided_at desc limit 1
+     ) ra on true
+     where rp.status = 'approved_pending_dispute'
+       and rp.dispute_closes_at <= clock_timestamp()
+       and m.status = 'proposed'
+       and not exists (
+         select 1 from public.resolution_disputes rd
+         where rd.proposal_id = rp.id and rd.status not in ('rejected','closed','withdrawn')
+       )
+     order by rp.dispute_closes_at limit 50`,
+  );
+  for (const proposal of due.rows) {
+    try {
+      await withTransaction(async (client) => {
+        await setTenantContext(client, proposal.tenant_id);
+        const locked = await client.query(
+          `select 1 from public.resolution_proposals rp
+           join public.markets m on m.id = rp.market_id
+           where rp.id = $1 and rp.tenant_id = $2
+             and rp.status = 'approved_pending_dispute'
+             and rp.dispute_closes_at <= clock_timestamp() and m.status = 'proposed'
+             and not exists (
+               select 1 from public.resolution_disputes rd
+               where rd.proposal_id = rp.id
+                 and rd.status not in ('rejected','closed','withdrawn')
+             )
+           for update of rp,m`,
+          [proposal.proposal_id, proposal.tenant_id],
+        );
+        if (!locked.rowCount) return;
+        await client.query(
+          `update public.resolution_proposals
+           set status = 'approved',finalised_at = clock_timestamp() where id = $1`,
+          [proposal.proposal_id],
+        );
+        await client.query('select public.transition_market($1,$2,$3,$4,$5)', [
+          proposal.tenant_id,
+          proposal.market_ref,
+          'resolved',
+          proposal.officer_id,
+          'The dispute window expired without an open dispute.',
+        ]);
+      });
+    } catch (error) {
+      workerError('resolution-finalisation', error, proposal.market_ref);
+    }
+  }
+}
+
+async function settleResolvedMarkets(): Promise<void> {
+  const due = await pool.query<{
+    tenant_id: string;
+    market_id: string;
+    market_ref: string;
+    proposal_id: string;
+    actor_id: string;
+  }>(
+    `select m.tenant_id,m.id as market_id,m.market_ref,rp.id as proposal_id,
+      coalesce(ra.officer_id,m.approved_by,m.created_by) as actor_id
+     from public.markets m
+     join public.resolution_proposals rp on rp.market_id = m.id and rp.status = 'approved'
+     left join lateral (
+       select officer_id from public.resolution_approvals
+       where proposal_id = rp.id and decision = 'approve'
+       order by decided_at desc limit 1
+     ) ra on true
+     where m.status = 'resolved'
+       and not exists (
+         select 1 from public.reconciliation_cases rc
+         join public.reconciliation_items ri on ri.id = rc.reconciliation_item_id
+         join public.reconciliation_runs rr on rr.id = ri.reconciliation_run_id
+         where rr.tenant_id = m.tenant_id and rc.status <> 'resolved'
+           and rc.blocks_settlement
+       )
+     order by rp.finalised_at nulls last limit 20`,
+  );
+  for (const market of due.rows) {
+    let runId: string | undefined;
+    try {
+      runId = await claimSettlementRun(market);
+      if (!runId) continue;
+      await executeSettlement(market, runId);
+    } catch (error) {
+      if (runId) {
+        await failSettlementRun(market.tenant_id, runId, error);
+      }
+      workerError('market-settlement', error, market.market_ref);
+    }
+  }
+}
+
+async function claimSettlementRun(market: {
+  tenant_id: string;
+  market_id: string;
+  market_ref: string;
+  proposal_id: string;
+}): Promise<string | undefined> {
+  return withTransaction(async (client) => {
+    await setTenantContext(client, market.tenant_id);
+    const locked = await client.query(
+      `select 1 from public.markets
+       where id = $1 and tenant_id = $2 and status = 'resolved' for update`,
+      [market.market_id, market.tenant_id],
+    );
+    if (!locked.rowCount) return undefined;
+    const inserted = await client.query<{ id: string; status: string }>(
+      `insert into public.settlement_runs
+       (tenant_id,settlement_ref,market_id,proposal_id,status,started_at,
+        locked_at,locked_by,attempt_count)
+       values ($1,$2,$3,$4,'processing',clock_timestamp(),clock_timestamp(),$5,1)
+       on conflict (market_id) do update
+       set status = case when public.settlement_runs.status = 'completed'
+           then public.settlement_runs.status else 'processing' end,
+         locked_at = case when public.settlement_runs.status = 'completed'
+           then public.settlement_runs.locked_at else clock_timestamp() end,
+         locked_by = case when public.settlement_runs.status = 'completed'
+           then public.settlement_runs.locked_by else excluded.locked_by end,
+         attempt_count = case when public.settlement_runs.status = 'completed'
+           then public.settlement_runs.attempt_count
+           else public.settlement_runs.attempt_count + 1 end,
+         last_error = case when public.settlement_runs.status = 'completed'
+           then public.settlement_runs.last_error else null end
+       returning id,status`,
+      [
+        market.tenant_id,
+        deterministicRef('stl', market.market_id),
+        market.market_id,
+        market.proposal_id,
+        workerRef,
+      ],
+    );
+    return inserted.rows[0]?.status === 'completed' ? undefined : inserted.rows[0]?.id;
+  });
+}
+
+async function executeSettlement(
+  market: {
+    tenant_id: string;
+    market_id: string;
+    market_ref: string;
+    proposal_id: string;
+    actor_id: string;
+  },
+  runId: string,
+): Promise<void> {
+  await withTransaction(async (client) => {
+    await setTenantContext(client, market.tenant_id);
+    const locked = await client.query<{
+      asset_id: string;
+      payout_atoms: string;
+      winning_outcome_id: string;
+    }>(
+      `select m.collateral_asset_id as asset_id,m.payout_atoms::text,
+        rp.outcome_id as winning_outcome_id
+       from public.settlement_runs sr
+       join public.markets m on m.id = sr.market_id
+       join public.resolution_proposals rp on rp.id = sr.proposal_id
+       where sr.id = $1 and sr.tenant_id = $2 and sr.status = 'processing'
+         and sr.locked_by = $3 and m.status = 'resolved' and rp.status = 'approved'
+       for update of sr,m`,
+      [runId, market.tenant_id, workerRef],
+    );
+    const row = locked.rows[0];
+    if (!row) return;
+    await client.query('select public.transition_market($1,$2,$3,$4,$5)', [
+      market.tenant_id,
+      market.market_ref,
+      'settling',
+      market.actor_id,
+      'Exactly-once settlement started.',
+    ]);
+    const positions = await client.query<{
+      id: string;
+      user_id: string;
+      outcome_id: string;
+      available_quantity: string;
+      locked_quantity: string;
+    }>(
+      `select id,user_id,outcome_id,available_quantity::text,locked_quantity::text
+       from public.positions
+       where market_id = $1 and settled_at is null
+         and (available_quantity > 0 or locked_quantity > 0)
+       order by id for update`,
+      [market.market_id],
+    );
+    if (positions.rows.some((position) => BigInt(position.locked_quantity) !== 0n)) {
+      throw new Error('Settlement is blocked because a position remains locked.');
+    }
+    const payouts = positions.rows.map((position) => ({
+      ...position,
+      payout:
+        position.outcome_id === row.winning_outcome_id
+          ? BigInt(position.available_quantity) * BigInt(row.payout_atoms)
+          : 0n,
+    }));
+    const totalPayout = payouts.reduce((sum, position) => sum + position.payout, 0n);
+    let journalId: string | undefined;
+    if (totalPayout > 0n) {
+      const collateral = await workerLedgerAccount(
+        client,
+        market.tenant_id,
+        null,
+        row.asset_id,
+        'collateral_locked',
+      );
+      if (!collateral || collateral.balance < totalPayout) {
+        throw new Error('Settlement collateral is insufficient.');
+      }
+      const postings: WorkerPosting[] = [
+        { accountId: collateral.id, debitAtoms: totalPayout },
+      ];
+      for (const position of payouts) {
+        if (position.payout === 0n) continue;
+        const available = await workerLedgerAccount(
+          client,
+          market.tenant_id,
+          position.user_id,
+          row.asset_id,
+          'customer_available',
+        );
+        if (!available) throw new Error('A settlement beneficiary account is missing.');
+        postings.push({ accountId: available.id, creditAtoms: position.payout });
+      }
+      journalId = await postWorkerJournal(client, {
+        tenantId: market.tenant_id,
+        assetId: row.asset_id,
+        transactionType: 'market_settlement',
+        referenceType: 'settlement',
+        referenceRef: deterministicRef('stl', market.market_id),
+        idempotencyKey: `market-settlement:${market.market_id}`,
+        postings,
+      });
+    }
+    if (payouts.length > 0 && !journalId) {
+      throw new Error('A populated settlement must have a balanced ledger journal.');
+    }
+    for (const position of payouts) {
+      const item = await client.query<{ id: string }>(
+        `insert into public.settlement_items
+         (settlement_run_id,position_id,user_id,payout_atoms,ledger_journal_id,
+          settled_at,payout_rate_atoms)
+         values ($1,$2,$3,$4,$5,clock_timestamp(),$6)
+         on conflict (settlement_run_id,position_id) do update
+         set payout_atoms = excluded.payout_atoms
+         returning id`,
+        [
+          runId,
+          position.id,
+          position.user_id,
+          position.payout.toString(),
+          journalId,
+          position.outcome_id === row.winning_outcome_id ? row.payout_atoms : '0',
+        ],
+      );
+      await client.query(
+        `update public.positions
+         set settled_quantity = available_quantity,available_quantity = 0,
+           settled_at = clock_timestamp(),settlement_item_id = $2,
+           updated_at = clock_timestamp()
+         where id = $1 and settled_at is null`,
+        [position.id, item.rows[0]!.id],
+      );
+    }
+    await client.query(
+      `update public.settlement_runs
+       set status = 'completed',completed_at = clock_timestamp(),
+         totals = jsonb_build_object('position_count',$2::integer,'payout_atoms',$3::text),
+         locked_at = null,locked_by = null,last_error = null
+       where id = $1`,
+      [runId, payouts.length, totalPayout.toString()],
+    );
+    await client.query('select public.transition_market($1,$2,$3,$4,$5)', [
+      market.tenant_id,
+      market.market_ref,
+      'settled',
+      market.actor_id,
+      'All positions and collateral were settled atomically.',
+    ]);
+  });
+}
+
+async function failSettlementRun(tenantId: string, runId: string, error: unknown): Promise<void> {
+  await withTransaction(async (client) => {
+    await setTenantContext(client, tenantId);
+    await client.query(
+      `update public.settlement_runs
+       set status = 'failed',last_error = left($2,2000),locked_at = null,locked_by = null
+       where id = $1 and status = 'processing'`,
+      [runId, error instanceof Error ? error.message : 'Settlement failed.'],
+    );
+  });
 }
 
 async function publishOutbox(): Promise<void> {
@@ -347,7 +1095,7 @@ async function publishOutbox(): Promise<void> {
   for (const event of events.rows) {
     try {
       await producer.send({
-        topic: 'kynorix.events.v1',
+        topic: 'zoryqon.events.v1',
         acks: -1,
         messages: [
           {
@@ -477,18 +1225,141 @@ async function withTransaction<T>(operation: (client: PoolClient) => Promise<T>)
   }
 }
 
+async function setTenantContext(client: PoolClient, tenantId: string): Promise<void> {
+  await client.query(`select set_config('app.tenant_id',$1,true)`, [tenantId]);
+  await client.query(`select set_config('app.user_id','',true)`);
+}
+
+interface WorkerPosting {
+  accountId: string;
+  debitAtoms?: bigint;
+  creditAtoms?: bigint;
+}
+
+async function workerLedgerAccount(
+  client: PoolClient,
+  tenantId: string,
+  userId: string | null,
+  assetId: string,
+  accountType: string,
+): Promise<{ id: string; balance: bigint } | null> {
+  const result = await client.query<{
+    id: string;
+    balance_atoms: string;
+  }>(
+    `select la.id,coalesce(lab.balance_atoms,0)::text as balance_atoms
+     from public.ledger_accounts la
+     left join public.ledger_account_balances lab on lab.account_id = la.id
+     where la.tenant_id = $1 and la.owner_user_id is not distinct from $2
+       and la.asset_id = $3 and la.account_type = $4 and la.status = 'active'
+     for update of la`,
+    [tenantId, userId, assetId, accountType],
+  );
+  const row = result.rows[0];
+  return row ? { id: row.id, balance: BigInt(row.balance_atoms) } : null;
+}
+
+async function postWorkerJournal(
+  client: PoolClient,
+  input: {
+    tenantId: string;
+    assetId: string;
+    transactionType: string;
+    referenceType: string;
+    referenceRef: string;
+    idempotencyKey: string;
+    postings: WorkerPosting[];
+  },
+): Promise<string> {
+  const debit = input.postings.reduce((sum, value) => sum + (value.debitAtoms ?? 0n), 0n);
+  const credit = input.postings.reduce((sum, value) => sum + (value.creditAtoms ?? 0n), 0n);
+  if (debit <= 0n || debit !== credit) throw new Error('Worker ledger journal is not balanced.');
+  const existing = await client.query<{ id: string }>(
+    `select id from public.ledger_journals
+     where tenant_id = $1 and idempotency_key = $2 for update`,
+    [input.tenantId, input.idempotencyKey],
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+  const journal = await client.query<{ id: string }>(
+    `insert into public.ledger_journals
+     (tenant_id,journal_ref,transaction_type,asset_id,reference_type,reference_ref,
+      idempotency_key,effective_at)
+     values ($1,$2,$3,$4,$5,$6,$7,clock_timestamp()) returning id`,
+    [
+      input.tenantId,
+      deterministicRef('ljr', input.idempotencyKey),
+      input.transactionType,
+      input.assetId,
+      input.referenceType,
+      input.referenceRef,
+      input.idempotencyKey,
+    ],
+  );
+  for (const posting of input.postings) {
+    const debitAtoms = posting.debitAtoms ?? 0n;
+    const creditAtoms = posting.creditAtoms ?? 0n;
+    if ((debitAtoms > 0n) === (creditAtoms > 0n)) {
+      throw new Error('Every worker ledger posting must have exactly one side.');
+    }
+    await client.query(
+      `insert into public.ledger_entries
+       (tenant_id,journal_id,account_id,debit_atoms,credit_atoms)
+       values ($1,$2,$3,$4,$5)`,
+      [
+        input.tenantId,
+        journal.rows[0]!.id,
+        posting.accountId,
+        debitAtoms.toString(),
+        creditAtoms.toString(),
+      ],
+    );
+  }
+  return journal.rows[0]!.id;
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function deterministicRef(prefix: string, seed: string): string {
+  return `${prefix}_${sha256(seed).slice(0, 24)}`;
+}
+
+function workerError(job: string, error: unknown, resource?: string): void {
+  process.stderr.write(
+    `${JSON.stringify({
+      level: 'error',
+      component: 'zoryqon-worker',
+      job,
+      resource,
+      message: error instanceof Error ? error.message : 'Worker operation failed.',
+      timestamp: new Date().toISOString(),
+    })}\n`,
+  );
+}
+
 async function runJob(name: string, operation: () => Promise<void>): Promise<void> {
   try {
     await operation();
   } catch (error) {
-    process.stderr.write(
-      `${JSON.stringify({
-        level: 'error',
-        component: 'kynorix-worker',
-        job: name,
-        message: error instanceof Error ? error.message : 'Worker job failed.',
-        timestamp: new Date().toISOString(),
-      })}\n`,
-    );
+    workerError(name, error);
+  }
+}
+
+function assertProductionEndpoint(name: string, value: string): void {
+  const url = new URL(value);
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const privateHost =
+    hostname === 'localhost' ||
+    hostname === '0.0.0.0' ||
+    hostname === '::1' ||
+    hostname.endsWith('.local') ||
+    /^127\./.test(hostname) ||
+    /^10\./.test(hostname) ||
+    /^192\.168\./.test(hostname) ||
+    /^169\.254\./.test(hostname) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+  if (url.protocol !== 'https:' || privateHost || url.username || url.password) {
+    throw new Error(`${name} must use a credential-free public HTTPS endpoint in production.`);
   }
 }

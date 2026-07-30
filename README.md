@@ -1,6 +1,6 @@
-# Kynorix
+# Zoryqon
 
-Kynorix is an English-language event exchange for web, iOS, Android, and
+Zoryqon is an English-language event exchange for web, iOS, Android, and
 protected operations. PostgreSQL is authoritative for identity mappings,
 markets, orders, fills, positions, payment state, double-entry journals,
 resolution evidence, audit records, and transactional outbox events.
@@ -35,7 +35,7 @@ Copy `.env.example` to `.env`, replace every placeholder, then run:
 ```bash
 npm ci
 docker compose up -d
-npm run migrate -w @kynorix/database
+npm run migrate -w @zoryqon/database
 npm run verify
 npm run dev
 ```

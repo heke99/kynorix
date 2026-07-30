@@ -1,4 +1,4 @@
-import type { MarketStatus } from '@kynorix/contracts';
+import type { MarketStatus } from '@zoryqon/contracts';
 
 const transitions: Readonly<Record<MarketStatus, readonly MarketStatus[]>> = {
   draft: ['under_review', 'cancelled'],
@@ -13,7 +13,7 @@ const transitions: Readonly<Record<MarketStatus, readonly MarketStatus[]>> = {
   resolution_pending: ['proposed', 'disputed', 'voided'],
   proposed: ['resolved', 'disputed', 'voided'],
   disputed: ['appealed', 'proposed', 'voided'],
-  appealed: ['resolved', 'voided'],
+  appealed: ['proposed', 'voided'],
   resolved: ['settling'],
   settling: ['settled'],
   settled: ['archived'],

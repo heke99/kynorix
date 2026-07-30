@@ -1,5 +1,5 @@
 'use client';
-import { kynorixApi } from '../../lib/api';
+import { zoryqonApi } from '../../lib/api';
 export default function SignupPage() {
   return (
     <div className="auth-page">
@@ -10,7 +10,7 @@ export default function SignupPage() {
           Email verification and identity checks are required before eligible products become
           available.
         </p>
-        <a className="primary-button" href={kynorixApi.loginUrl('/verification')}>
+        <a className="primary-button" href={zoryqonApi.loginUrl('/verification')}>
           Continue to sign up
         </a>
       </section>

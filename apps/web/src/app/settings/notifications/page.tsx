@@ -1,15 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { kynorixApi } from '../../../lib/api';
+import { zoryqonApi } from '../../../lib/api';
 
-type Preferences = Awaited<ReturnType<typeof kynorixApi.notificationPreferences>>;
+type Preferences = Awaited<ReturnType<typeof zoryqonApi.notificationPreferences>>;
 
 export default function NotificationsPage() {
   const [preferences, setPreferences] = useState<Preferences>();
   const [notice, setNotice] = useState('');
   useEffect(() => {
-    void kynorixApi
+    void zoryqonApi
       .notificationPreferences()
       .then(setPreferences)
       .catch((cause: unknown) => {
@@ -19,7 +19,7 @@ export default function NotificationsPage() {
   async function save() {
     if (!preferences) return;
     try {
-      await kynorixApi.updateNotificationPreferences(preferences);
+      await zoryqonApi.updateNotificationPreferences(preferences);
       setNotice('Notification preferences saved.');
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : 'Preferences could not be saved.');
