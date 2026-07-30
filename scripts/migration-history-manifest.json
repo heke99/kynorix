@@ -1,6 +1,6 @@
 {
   "algorithm": "sha256",
-  "generatedAt": "2026-07-30T18:00:00.000Z",
+  "generatedAt": "2026-07-30T20:30:00.000Z",
   "migrations": [
     {
       "version": "20260730010000",
@@ -11,6 +11,11 @@
       "version": "20260730170000",
       "filename": "20260730170000_zoryqon_financial_core_completion.sql",
       "sha256": "c02c4c8a946ed6a691fcf66bb553e265a6642112a24d5f9532995c8d55631f74"
+    },
+    {
+      "version": "20260730223000",
+      "filename": "20260730223000_supabase_platform.sql",
+      "sha256": "5895bd4300421f748e02f30791f0018c13796ba686bc831b6dce9b8a3ca96aa4"
     }
   ]
 }

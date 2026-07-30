@@ -1,8 +1,7 @@
 import type { AuthenticatedUser, Balance, FeeQuote, Market, Position } from '@zoryqon/contracts';
-import * as AuthSession from 'expo-auth-session';
+import * as Crypto from 'expo-crypto';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { StatusBar } from 'expo-status-bar';
-import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,33 +16,13 @@ import {
 } from 'react-native';
 import { mobileApi } from './src/api';
 
-WebBrowser.maybeCompleteAuthSession();
-
 type Tab = 'markets' | 'search' | 'portfolio' | 'wallet' | 'account';
 
-const issuer = process.env.EXPO_PUBLIC_OIDC_ISSUER;
-const clientId = process.env.EXPO_PUBLIC_OIDC_CLIENT_ID;
-
 export default function App() {
-  if (!issuer || !clientId) {
-    return <ConfigurationError />;
-  }
-  return <ZoryqonApp issuer={issuer} clientId={clientId} />;
+  return <ZoryqonApp />;
 }
 
-function ZoryqonApp({ issuer, clientId }: { issuer: string; clientId: string }) {
-  const discovery = AuthSession.useAutoDiscovery(issuer);
-  const redirectUri = AuthSession.makeRedirectUri({ scheme: 'zoryqon', path: 'auth' });
-  const [authRequest, authResponse, promptAsync] = AuthSession.useAuthRequest(
-    {
-      clientId,
-      responseType: AuthSession.ResponseType.Code,
-      redirectUri,
-      scopes: ['openid', 'profile', 'email', 'offline_access'],
-      usePKCE: true,
-    },
-    discovery,
-  );
+function ZoryqonApp() {
   const [tab, setTab] = useState<Tab>('markets');
   const [markets, setMarkets] = useState<Market[]>([]);
   const [selectedMarket, setSelectedMarket] = useState<Market>();
@@ -85,33 +64,24 @@ function ZoryqonApp({ issuer, clientId }: { issuer: string; clientId: string }) 
   useEffect(() => {
     void load();
   }, []);
-  useEffect(() => {
-    if (authResponse?.type !== 'success' || !discovery || !authRequest?.codeVerifier) return;
-    const code = authResponse.params.code;
-    if (!code) {
-      setError('The identity provider returned no authorization code.');
-      return;
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginBusy, setLoginBusy] = useState(false);
+
+  async function login() {
+    setLoginBusy(true);
+    setError('');
+    try {
+      await mobileApi.signIn(loginEmail, loginPassword);
+      setShowLogin(false);
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Login failed.');
+    } finally {
+      setLoginBusy(false);
     }
-    void AuthSession.exchangeCodeAsync(
-      {
-        clientId,
-        code,
-        redirectUri,
-        extraParams: { code_verifier: authRequest.codeVerifier },
-      },
-      discovery,
-    )
-      .then(async (tokens) => {
-        if (!tokens.accessToken) throw new Error('The identity provider returned no access token.');
-        if (tokens.refreshToken)
-          await mobileApi.saveTokens(tokens.accessToken, tokens.refreshToken);
-        else await mobileApi.saveTokens(tokens.accessToken);
-        await load();
-      })
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : 'Login failed.'),
-      );
-  }, [authRequest?.codeVerifier, authResponse, clientId, discovery, redirectUri]);
+  }
 
   async function unlock() {
     const result = await LocalAuthentication.authenticateAsync({
@@ -124,7 +94,7 @@ function ZoryqonApp({ issuer, clientId }: { issuer: string; clientId: string }) 
   async function reviewOrder() {
     if (!selectedMarket) return;
     if (!user) {
-      await promptAsync();
+      setShowLogin(true);
       return;
     }
     try {
@@ -161,7 +131,7 @@ function ZoryqonApp({ issuer, clientId }: { issuer: string; clientId: string }) 
         postOnly: false,
         maximumSlippageBasisPoints: 100,
         quoteRef: quote.quoteRef,
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: Crypto.randomUUID(),
       });
       setNotice(`Order ${order.status.replaceAll('_', ' ')}.`);
       setQuote(undefined);
@@ -195,11 +165,7 @@ function ZoryqonApp({ issuer, clientId }: { issuer: string; clientId: string }) 
             </Text>
           </Pressable>
         ) : (
-          <Pressable
-            style={styles.loginButton}
-            disabled={!authRequest}
-            onPress={() => void promptAsync()}
-          >
+          <Pressable style={styles.loginButton} onPress={() => setShowLogin(true)}>
             <Text style={styles.loginText}>Log in</Text>
           </Pressable>
         )}
@@ -219,6 +185,35 @@ function ZoryqonApp({ issuer, clientId }: { issuer: string; clientId: string }) 
       >
         {loading && <ActivityIndicator color="#62efc1" style={styles.loader} />}
         {error && <Notice value={error} danger />}
+        {showLogin && !user && (
+          <View style={styles.mobileLoginCard}>
+            <Text style={styles.title}>Log in with Supabase</Text>
+            <Text style={styles.subtitle}>Use the same Zoryqon account on web and mobile.</Text>
+            <TextInput
+              autoCapitalize="none"
+              keyboardType="email-address"
+              placeholder="Email"
+              placeholderTextColor="#61766f"
+              style={styles.input}
+              value={loginEmail}
+              onChangeText={setLoginEmail}
+            />
+            <TextInput
+              placeholder="Password"
+              placeholderTextColor="#61766f"
+              secureTextEntry
+              style={styles.input}
+              value={loginPassword}
+              onChangeText={setLoginPassword}
+            />
+            <Pressable style={styles.primaryButton} disabled={loginBusy} onPress={() => void login()}>
+              <Text style={styles.primaryText}>{loginBusy ? 'Please wait…' : 'Log in'}</Text>
+            </Pressable>
+            <Pressable style={styles.secondaryButton} onPress={() => setShowLogin(false)}>
+              <Text style={styles.secondaryText}>Cancel</Text>
+            </Pressable>
+          </View>
+        )}
         {!loading && selectedMarket ? (
           <MarketDetail
             market={selectedMarket}
@@ -262,26 +257,20 @@ function ZoryqonApp({ issuer, clientId }: { issuer: string; clientId: string }) 
               <Portfolio
                 user={user}
                 positions={positions}
-                onLogin={() => {
-                  void promptAsync();
-                }}
+                onLogin={() => setShowLogin(true)}
               />
             )}
             {tab === 'wallet' && (
               <Wallet
                 user={user}
                 balances={balances}
-                onLogin={() => {
-                  void promptAsync();
-                }}
+                onLogin={() => setShowLogin(true)}
               />
             )}
             {tab === 'account' && (
               <Account
                 user={user}
-                onLogin={() => {
-                  void promptAsync();
-                }}
+                onLogin={() => setShowLogin(true)}
                 onUnlock={() => {
                   void unlock();
                 }}
@@ -573,20 +562,6 @@ function Notice({ value, danger = false }: { value: string; danger?: boolean }) 
   );
 }
 
-function ConfigurationError() {
-  return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Configuration required</Text>
-        <Text style={styles.subtitle}>
-          EXPO_PUBLIC_OIDC_ISSUER and EXPO_PUBLIC_OIDC_CLIENT_ID must be set before this application
-          can start.
-        </Text>
-      </View>
-    </SafeAreaView>
-  );
-}
-
 function formatAtoms(balance: Balance): string {
   const value = BigInt(balance.availableAtoms);
   const base = 10n ** BigInt(balance.decimals);
@@ -633,6 +608,7 @@ const styles = StyleSheet.create({
   balancePillText: { color: '#62efc1', fontWeight: '700', fontSize: 10 },
   content: { padding: 20, paddingBottom: 110 },
   loader: { marginTop: 80 },
+  mobileLoginCard: { backgroundColor: '#0d1c18', borderRadius: 16, padding: 18, marginBottom: 18, gap: 10 },
   kicker: {
     color: '#62efc1',
     fontSize: 9,

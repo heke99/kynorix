@@ -553,3 +553,44 @@ h1 {
   min-height: 120px;
   resize: vertical;
 }
+
+.ops-login-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #07100f;
+}
+.ops-login-card {
+  width: min(100%, 430px);
+  display: grid;
+  gap: 16px;
+  padding: 32px;
+  border: 1px solid #203b34;
+  border-radius: 18px;
+  background: #0c1815;
+  color: #eef8f4;
+}
+.ops-login-brand { display: flex; align-items: center; gap: 10px; }
+.ops-login-card h1, .ops-login-card p { margin: 0; }
+.ops-login-card p { color: #8fa59d; }
+.ops-login-card label { display: grid; gap: 7px; font-size: 13px; font-weight: 700; }
+.ops-login-card input {
+  border: 1px solid #2a4940;
+  border-radius: 10px;
+  background: #07100f;
+  color: #eef8f4;
+  padding: 12px;
+  font: inherit;
+}
+.ops-login-card button {
+  border: 0;
+  border-radius: 10px;
+  background: #62efc1;
+  color: #07100f;
+  padding: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.ops-login-card button:disabled { opacity: .65; cursor: wait; }
+.ops-login-error { border-radius: 10px; background: #38191d; color: #ffc6ca; padding: 11px 12px; }

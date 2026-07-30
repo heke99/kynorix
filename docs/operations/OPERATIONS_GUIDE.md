@@ -1,6 +1,6 @@
 # Operations guide
 
-The operations application is separately deployed and requires a staff OIDC
+The operations application is separately deployed and requires a staff Supabase Auth
 session, current-session MFA, a scoped role, and an explicit permission for
 every API action. Staff identity is never supplied by the browser.
 

@@ -8,8 +8,7 @@ Decision: **NO-GO**
 - PostgreSQL-backed identity mappings, customer records, markets, orders,
   trades, positions, ledger, payments, pricing, resolution, audit, outbox, and
   reconciliation entities.
-- Verified OIDC token identity, PKCE web login, encrypted rotating refresh-token
-  storage, secure cookies, CSRF protection, session revocation, scoped roles,
+- Verified Supabase Auth token identity, email/password web login, encrypted rotating refresh-token storage, secure cookies, CSRF protection, session revocation, scoped roles,
   permissions, and independent resolution approval.
 - Public market catalogue, category/search/sort/pagination, real stored history,
   order book, trades, wallet, portfolio, order, settings, verification, legal,
@@ -25,8 +24,7 @@ Decision: **NO-GO**
   worker failures.
 - Fully collateralised binary complete-set minting, cumulative position limits,
   dispute-window finalisation and replay-safe exactly-once settlement journals.
-- Protected operations client and production mobile identifiers, OIDC PKCE,
-  secure token storage, biometric prompt, and shared API contracts.
+- Protected operations client and production mobile identifiers, Supabase Auth, secure token storage, biometric prompt, and shared API contracts.
 
 ## Verification status
 
@@ -34,7 +32,7 @@ Decision: **NO-GO**
   forbidden-terminology scanning, migration verification, TypeScript checks,
   unit tests and production builds.
 - This financial-core completion passed the forbidden-terminology scan and the
-  two-migration filename/checksum manifest check.
+  three-migration filename/checksum manifest check.
 - The current delivery environment's package source returned integrity errors
   during clean installation. Formatting, TypeScript, tests and production
   builds for this completion therefore require a clean CI rerun.
@@ -45,9 +43,10 @@ Decision: **NO-GO**
 ## Required configuration
 
 All variables in `.env.example` are mandatory for the relevant process. Secrets
-must come from an approved secrets manager. The API requires PostgreSQL, Redis,
-an event broker, object storage, OIDC, payment, custody, price, and compliance
-providers. The worker additionally requires notification-provider settings.
+must come from an approved secrets manager. The API and worker require a
+configured Supabase project for PostgreSQL, Auth, Storage, and Realtime.
+Payment, custody, price, compliance, and notification providers are optional in
+development but mandatory for the production capabilities that use them.
 
 ## External and operational blockers
 

@@ -36,16 +36,22 @@ export interface ProviderVerificationSession {
 }
 
 export class ProviderRegistry {
-  private readonly payment: HttpPaymentProvider;
-  private readonly custody: HttpProvider;
-  private readonly price: HttpProvider;
-  private readonly compliance: HttpProvider;
+  private readonly payment: HttpPaymentProvider | null;
+  private readonly custody: HttpProvider | null;
+  private readonly price: HttpProvider | null;
+  private readonly compliance: HttpProvider | null;
 
   constructor(config: ApiConfig) {
-    this.payment = new HttpPaymentProvider(config.providers.payment);
-    this.custody = new HttpProvider('custody', config.providers.custody);
-    this.price = new HttpProvider('price', config.providers.price);
-    this.compliance = new HttpProvider('compliance', config.providers.compliance);
+    this.payment = config.providers.payment
+      ? new HttpPaymentProvider(config.providers.payment)
+      : null;
+    this.custody = config.providers.custody
+      ? new HttpProvider('custody', config.providers.custody)
+      : null;
+    this.price = config.providers.price ? new HttpProvider('price', config.providers.price) : null;
+    this.compliance = config.providers.compliance
+      ? new HttpProvider('compliance', config.providers.compliance)
+      : null;
   }
 
   createDeposit(
@@ -53,7 +59,7 @@ export class ProviderRegistry {
     userRef: string,
     input: CreateDeposit,
   ): Promise<ProviderDepositSession> {
-    return this.payment.createDeposit(depositRef, userRef, input);
+    return requiredProvider(this.payment, 'payment').createDeposit(depositRef, userRef, input);
   }
 
   createWithdrawal(
@@ -61,7 +67,7 @@ export class ProviderRegistry {
     userRef: string,
     input: CreateWithdrawal,
   ): Promise<ProviderWithdrawalSubmission> {
-    return this.payment.createWithdrawal(withdrawalRef, userRef, input);
+    return requiredProvider(this.payment, 'payment').createWithdrawal(withdrawalRef, userRef, input);
   }
 
   createVerification(
@@ -69,7 +75,7 @@ export class ProviderRegistry {
     userRef: string,
     input: StartVerification,
   ): Promise<ProviderVerificationSession> {
-    return this.compliance.request<ProviderVerificationSession>(
+    return requiredProvider(this.compliance, 'compliance').request<ProviderVerificationSession>(
       '/v1/verifications',
       {
         reference: caseRef,
@@ -82,22 +88,23 @@ export class ProviderRegistry {
   }
 
   verifyPaymentWebhook(rawBody: Buffer, signature: string | undefined): VerifiedProviderEvent {
-    return this.payment.verifyWebhook(rawBody, signature);
+    return requiredProvider(this.payment, 'payment').verifyWebhook(rawBody, signature);
   }
 
-  async readiness(): Promise<Record<string, boolean>> {
-    const checks = await Promise.all([
-      this.payment.health(),
-      this.custody.health(),
-      this.price.health(),
-      this.compliance.health(),
-    ]);
-    return {
-      payment: checks[0],
-      custody: checks[1],
-      price: checks[2],
-      compliance: checks[3],
+  async readiness(): Promise<Record<string, { configured: boolean; healthy: boolean }>> {
+    const providers = {
+      payment: this.payment,
+      custody: this.custody,
+      price: this.price,
+      compliance: this.compliance,
     };
+    const entries = await Promise.all(
+      Object.entries(providers).map(async ([name, configured]) => [
+        name,
+        { configured: Boolean(configured), healthy: configured ? await configured.health() : false },
+      ] as const),
+    );
+    return Object.fromEntries(entries);
   }
 }
 
@@ -184,10 +191,7 @@ class HttpPaymentProvider extends HttpProvider {
     userRef: string,
     input: CreateWithdrawal,
   ): Promise<ProviderWithdrawalSubmission> {
-    const result = await this.request<{
-      id: string;
-      status: 'submitted' | 'confirming';
-    }>(
+    const result = await this.request<{ id: string; status: 'submitted' | 'confirming' }>(
       '/v1/withdrawals',
       {
         reference: withdrawalRef,
@@ -257,6 +261,16 @@ class HttpPaymentProvider extends HttpProvider {
       },
     };
   }
+}
+
+function requiredProvider<T>(value: T | null, name: string): T {
+  if (!value) {
+    throw Object.assign(new Error(`${name} provider is not configured.`), {
+      code: 'PROVIDER_NOT_CONFIGURED',
+      statusCode: 503,
+    });
+  }
+  return value;
 }
 
 function webhookError(code: string): Error {

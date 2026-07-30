@@ -1,32 +1,47 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
 
-describe('production configuration', () => {
-  it('fails closed when mandatory infrastructure or provider settings are absent', () => {
+const base = {
+  NODE_ENV: 'test',
+  API_HOST: '127.0.0.1',
+  API_PORT: '4000',
+  WEB_ORIGINS: 'https://app.example.test',
+  SUPABASE_URL: 'https://abcdefghijklm.supabase.co',
+  SUPABASE_PUBLISHABLE_KEY: 'sb_publishable_test_key',
+  SUPABASE_SECRET_KEY: 'sb_secret_test_key',
+  SUPABASE_DB_URL:
+    'postgresql://postgres.abcdefghijklm:password@aws-0-eu-north-1.pooler.supabase.com:5432/postgres',
+  SUPABASE_DB_SSL: 'require',
+  SUPABASE_JWT_AUDIENCE: 'authenticated',
+  SUPABASE_STORAGE_BUCKET: 'zoryqon-private',
+  SESSION_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64url'),
+  ZORYQON_TENANT_REF: 'zoryqon',
+};
+
+describe('Supabase configuration', () => {
+  it('fails closed when mandatory Supabase settings are absent', () => {
     expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(
-      /Invalid or missing production configuration/,
+      /Invalid or missing API configuration/,
     );
   });
 
-  it('accepts a complete explicit configuration', () => {
+  it('accepts Supabase without external development providers', () => {
+    const config = loadConfig(base);
+    expect(config.environment).toBe('test');
+    expect(config.tenantRef).toBe('zoryqon');
+    expect(config.providers.price).toBeNull();
+  });
+
+  it('requires all production providers', () => {
+    expect(() => loadConfig({ ...base, NODE_ENV: 'production' })).toThrow(
+      /provider configuration is required in production/,
+    );
+  });
+
+  it('accepts complete production provider settings', () => {
     const config = loadConfig({
-      NODE_ENV: 'test',
-      API_HOST: '127.0.0.1',
-      API_PORT: '4000',
-      WEB_ORIGINS: 'https://app.example.test',
-      DATABASE_URL: 'postgresql://user:password@database.example.test:5432/zoryqon',
-      DATABASE_SSL: 'require',
-      REDIS_URL: 'redis://redis.example.test:6379',
-      EVENT_BROKER_URL: 'tcp://broker.example.test:9092',
-      OBJECT_STORAGE_ENDPOINT: 'https://objects.example.test',
-      OBJECT_STORAGE_BUCKET: 'zoryqon-test',
-      OIDC_ISSUER: 'https://identity.example.test',
-      OIDC_AUDIENCE: 'zoryqon-api',
-      OIDC_CLIENT_ID: 'zoryqon-web',
-      OIDC_CLIENT_SECRET: 'secret',
-      OIDC_REDIRECT_URI: 'https://api.example.test/v1/auth/callback',
-      SESSION_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64url'),
-      ZORYQON_TENANT_REF: 'tenant_test',
+      ...base,
+      NODE_ENV: 'production',
       PAYMENT_PROVIDER_BASE_URL: 'https://payments.example.test',
       PAYMENT_PROVIDER_API_KEY: 'payment-key',
       PAYMENT_PROVIDER_WEBHOOK_SECRET: 'a'.repeat(32),
@@ -37,7 +52,6 @@ describe('production configuration', () => {
       COMPLIANCE_PROVIDER_BASE_URL: 'https://compliance.example.test',
       COMPLIANCE_PROVIDER_API_KEY: 'compliance-key',
     });
-    expect(config.environment).toBe('test');
-    expect(config.tenantRef).toBe('tenant_test');
+    expect(config.providers.payment).not.toBeNull();
   });
 });

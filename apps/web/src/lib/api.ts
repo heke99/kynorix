@@ -33,6 +33,10 @@ function configuredApiUrl(): string | null {
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  return request<T>(path, init, true);
+}
+
+async function request<T>(path: string, init: RequestInit | undefined, allowRefresh: boolean): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body) headers.set('content-type', 'application/json');
   const csrf = readCookie('zoryqon_csrf');
@@ -43,6 +47,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: 'include',
     cache: 'no-store',
   });
+  if (response.status === 401 && allowRefresh && !path.startsWith('/v1/auth/')) {
+    const refreshed = await refreshSession();
+    if (refreshed) return request<T>(path, init, false);
+  }
   const body = (await response.json()) as ApiEnvelope<T> & {
     error?: { message?: string; code?: string };
   };
@@ -52,6 +60,23 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw error;
   }
   return body.data;
+}
+
+async function refreshSession(): Promise<boolean> {
+  const headers = new Headers({ 'content-type': 'application/json' });
+  const csrf = readCookie('zoryqon_csrf');
+  if (csrf) headers.set('x-csrf-token', csrf);
+  try {
+    const response = await fetch(`${apiUrl()}/v1/auth/refresh`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 function queryString(values: Record<string, string | number | undefined>): string {
@@ -153,15 +178,8 @@ export const zoryqonApi = {
       body: JSON.stringify(input),
     }),
   logout: () => api<{ loggedOut: boolean }>('/v1/auth/logout', { method: 'POST' }),
-  loginUrl: (returnTo = '/') => {
-    const baseUrl = configuredApiUrl();
-    return baseUrl
-      ? `${baseUrl}/v1/auth/login?returnTo=${encodeURIComponent(returnTo)}`
-      : '/support?error=identity-configuration-unavailable';
-  },
-  accountSecurityUrl: () =>
-    process.env.NEXT_PUBLIC_OIDC_ACCOUNT_URL ??
-    '/support?error=identity-account-management-unavailable',
+  loginUrl: (returnTo = '/') => `/login?returnTo=${encodeURIComponent(returnTo)}`,
+  accountSecurityUrl: () => '/settings/security',
 };
 
 export function formatAtoms(value: string, asset: string, decimals = 2): string {

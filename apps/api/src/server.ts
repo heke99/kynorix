@@ -1,4 +1,3 @@
-import { createConnection } from 'node:net';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -122,23 +121,22 @@ export async function buildServer(config: ApiConfig) {
 
   app.addHook('onClose', async () => database.close());
   app.addHook('onRequest', async (request) => {
-    if (
-      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) &&
-      !request.url.startsWith('/v1/provider-webhooks/')
-    ) {
+    const csrfExempt =
+      request.url.startsWith('/v1/provider-webhooks/') ||
+      request.url.startsWith('/v1/auth/sign-in') ||
+      request.url.startsWith('/v1/auth/sign-up');
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method) && !csrfExempt) {
       auth.verifyCsrf(request);
     }
   });
 
   app.get('/health/live', async () => ({ status: 'alive' }));
   app.get('/health/ready', async (request, reply) => {
-    const [db, providerHealth, oidc, redis, broker, objectStorage] = await Promise.all([
+    const [db, providerHealth, supabaseAuth, supabaseStorage] = await Promise.all([
       database.health(),
       providers.readiness(),
       auth.providerHealth(),
-      tcpUrlHealth(config.redisUrl),
-      tcpUrlHealth(config.eventBrokerUrl),
-      httpHealth(config.objectStorageEndpoint),
+      supabaseStorageHealth(config),
     ]);
     const ledger = db.ok
       ? await database
@@ -151,20 +149,24 @@ export async function buildServer(config: ApiConfig) {
           .then((result) => result.rows[0]?.differences === '0')
           .catch(() => false)
       : false;
+    const providerChecks = Object.fromEntries(
+      Object.entries(providerHealth).map(([name, status]) => [
+        `${name}Provider`,
+        status.configured ? status.healthy : 'not-configured',
+      ]),
+    );
     const checks = {
-      postgres: db.ok,
-      migration: db.migrationVersion === '20260730170000',
-      redis,
-      eventBroker: broker,
-      objectStorage,
-      identityProvider: oidc,
-      paymentProvider: providerHealth.payment,
-      custodyProvider: providerHealth.custody,
-      priceProvider: providerHealth.price,
-      complianceProvider: providerHealth.compliance,
+      supabasePostgres: db.ok,
+      migration: db.migrationVersion === '20260730223000',
+      supabaseAuth,
+      supabaseStorage,
       ledgerIntegrity: ledger,
+      ...providerChecks,
     };
-    const ready = Object.values(checks).every(Boolean);
+    const providersReady =
+      config.environment !== 'production' ||
+      Object.values(providerHealth).every((status) => status.configured && status.healthy);
+    const ready = db.ok && checks.migration && supabaseAuth && supabaseStorage && ledger && providersReady;
     return reply.status(ready ? 200 : 503).send(envelope(request, { ready, checks }));
   });
 
@@ -174,17 +176,31 @@ export async function buildServer(config: ApiConfig) {
 
   app.get('/v1/auth/login', async (request, reply) => {
     const { returnTo } = z.object({ returnTo: z.string().default('/') }).parse(request.query);
-    const login = await auth.beginLogin(returnTo);
-    return reply.redirect(login.authorizationUrl);
-  });
-  app.get('/v1/auth/callback', async (request, reply) => {
-    const { code, state } = z
-      .object({ code: z.string().min(1), state: z.string().min(1) })
-      .parse(request.query);
-    const returnTo = await auth.completeLogin(code, state, request, reply);
+    const safeReturnTo = returnTo.startsWith('/') ? returnTo : '/';
     const webOrigin = config.webOrigins[0];
     if (!webOrigin) throw new Error('No web origin is configured.');
-    return reply.redirect(new URL(returnTo, webOrigin).toString());
+    const loginUrl = new URL('/login', webOrigin);
+    loginUrl.searchParams.set('returnTo', safeReturnTo);
+    return reply.redirect(loginUrl.toString());
+  });
+  app.post('/v1/auth/sign-in', async (request, reply) => {
+    const input = z
+      .object({ email: z.string().email(), password: z.string().min(8).max(256) })
+      .parse(request.body);
+    return envelope(request, await auth.signIn(input.email, input.password, request, reply));
+  });
+  app.post('/v1/auth/sign-up', async (request, reply) => {
+    const input = z
+      .object({
+        email: z.string().email(),
+        password: z.string().min(8).max(256),
+        displayName: z.string().min(2).max(100),
+      })
+      .parse(request.body);
+    return envelope(
+      request,
+      await auth.signUp(input.email, input.password, input.displayName, request, reply),
+    );
   });
   app.post('/v1/auth/logout', async (request, reply) => {
     await auth.principal(request);
@@ -507,7 +523,7 @@ export async function buildServer(config: ApiConfig) {
           payload: unknown;
         }>(
           `select event_ref, channel, event_type, sequence::text, occurred_at::text,
-          payload_version, payload from public.outbox_events
+          payload_version, payload from public.event_stream
          where channel = any($1::text[]) and occurred_at > $2::timestamptz
          order by occurred_at, sequence limit 500`,
           [channels, lastTimestamp],
@@ -564,6 +580,12 @@ function friendlyMessage(code: string, fallback: string): string {
   const messages: Record<string, string> = {
     AUTHENTICATION_REQUIRED: 'Please log in to continue.',
     INVALID_ACCESS_TOKEN: 'Your session is invalid or has expired.',
+    INVALID_LOGIN_CREDENTIALS: 'The email or password is incorrect.',
+    EMAIL_ALREADY_REGISTERED: 'An account already exists for this email address.',
+    EMAIL_ALREADY_LINKED: 'This email address is already linked to another account.',
+    PASSWORD_REQUIREMENTS_NOT_MET: 'The password does not meet the configured Supabase requirements.',
+    SESSION_REFRESH_FAILED: 'Your session could not be refreshed. Please log in again.',
+    PROVIDER_NOT_CONFIGURED: 'This feature is not configured yet.',
     PERMISSION_DENIED: 'You do not have permission to perform this action.',
     CSRF_VALIDATION_FAILED: 'The security token is invalid. Refresh the page and try again.',
     INTERNAL_ERROR: 'An unexpected server error occurred.',
@@ -579,33 +601,24 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-async function tcpUrlHealth(value: string): Promise<boolean> {
-  try {
-    const url = new URL(value);
-    const port = Number(url.port || (url.protocol === 'redis:' ? 6379 : 9092));
-    return await new Promise<boolean>((resolve) => {
-      const socket = createConnection({ host: url.hostname, port });
-      const done = (healthy: boolean) => {
-        socket.destroy();
-        resolve(healthy);
-      };
-      socket.setTimeout(2_000);
-      socket.once('connect', () => done(true));
-      socket.once('timeout', () => done(false));
-      socket.once('error', () => done(false));
-    });
-  } catch {
-    return false;
-  }
+function looksLikeLegacyJwtKey(value: string): boolean {
+  return value.split('.').length === 3 && !value.startsWith('sb_secret_');
 }
 
-async function httpHealth(endpoint: string): Promise<boolean> {
+async function supabaseStorageHealth(config: ApiConfig): Promise<boolean> {
   try {
-    const response = await fetch(endpoint, {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(3_000),
-    });
-    return response.ok || response.status === 403;
+    const headers: Record<string, string> = { apikey: config.supabase.secretKey };
+    if (looksLikeLegacyJwtKey(config.supabase.secretKey)) {
+      headers.authorization = `Bearer ${config.supabase.secretKey}`;
+    }
+    const response = await fetch(
+      `${config.supabase.url}/storage/v1/bucket/${encodeURIComponent(config.supabase.storageBucket)}`,
+      {
+        headers,
+        signal: AbortSignal.timeout(5_000),
+      },
+    );
+    return response.ok;
   } catch {
     return false;
   }

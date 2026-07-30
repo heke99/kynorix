@@ -8,10 +8,7 @@ Production decision: **NO-GO**
 - PostgreSQL is the authoritative runtime store for customers, markets, orders,
   trades, positions, ledger journals, payment records, pricing, resolution,
   audit, sessions, notifications, outbox events, and reconciliation.
-- OIDC Authorization Code with PKCE, verified token identity, rotating encrypted
-  refresh tokens, secure cookies, CSRF enforcement, session revocation, MFA
-  evidence, role scopes, and server-side permissions replace client-controlled
-  identity.
+- Supabase Auth provides verified token identity, rotating refresh tokens, secure cookies, CSRF enforcement, session revocation, MFA evidence, role scopes, and server-side permissions instead of client-controlled identity.
 - Order acceptance, cancellation, price-time matching, self-trade prevention,
   reservation, fill, fee, FIFO cost-basis, position, journal, and outbox writes
   share database transactions and idempotency boundaries.
@@ -45,12 +42,10 @@ operations, and mobile. The integration and end-to-end runners currently report
 that no matching test files exist; this is a release blocker, not test evidence.
 
 For the 2026-07-30 financial-core completion, the forbidden-terminology scan and
-the two-migration filename/checksum manifest were run successfully. A clean
+the three-migration filename/checksum manifest were run successfully. A clean
 lockfile installation could not be completed in the delivery environment
 because the package source returned integrity/checksum failures, so formatting,
-TypeScript, test and build commands must be rerun in CI. PostgreSQL binaries and
-container execution are unavailable here, so the forward migration has not
-been applied to a real database in this environment.
+TypeScript, test and build commands must be rerun in CI. A live Supabase project and its credentials are not available in this delivery environment, so the forward migration has not been applied to the user's remote database here.
 
 ## Remaining release blockers
 

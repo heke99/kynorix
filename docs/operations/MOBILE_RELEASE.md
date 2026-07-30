@@ -1,8 +1,6 @@
 # Mobile release guide
 
-The production identifiers are `com.zoryqon.app` for iOS and Android. Configure
-the OIDC mobile client for PKCE, the `zoryqon://auth` redirect, universal links,
-token rotation, remote revocation, and the exact production signing identities.
+The production identifiers are `com.zoryqon.app` for iOS and Android. Configure the production Supabase project URL and publishable key, secure token rotation, remote revocation, universal links, and the exact production signing identities. Never place the Supabase secret key or database password in the mobile bundle.
 
 Before submission:
 

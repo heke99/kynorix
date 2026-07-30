@@ -1,46 +1,37 @@
-# Zoryqon financial-core patch
+# Zoryqon Supabase integration patch
 
-This archive contains only files that were changed or added relative to the
-provided project.
+This version makes Supabase the canonical platform for PostgreSQL, Auth, Storage, and Realtime.
 
 ## Main changes
 
-- Product and infrastructure identity changed from the previous name to
-  **Zoryqon**.
-- Scheduled markets are materialised through durable, tenant-scoped worker
-  runs; failures are persisted and do not stop the queue.
-- Binary complete-set minting locks full collateral, posts a balanced journal
-  and creates one position lot per outcome atomically.
-- Withdrawal submission is claimed before the provider call and reuses a stable
-  provider idempotency key.
-- Resolution dispute windows and replay-safe settlement are orchestrated by the
-  worker.
-- Production provider configuration rejects local, private, credential-bearing
-  or unencrypted endpoints.
-- The unused ClickHouse compose service was removed.
+- Removes Docker, Redis, Kafka, Redpanda, and MinIO from the required runtime.
+- Uses `SUPABASE_DB_URL` for API, worker, migrations, and bootstrap commands.
+- Uses Supabase Auth for web, operations, and mobile sessions.
+- Creates the private Storage bucket, canonical tenant, roles, user identity mapping, and Realtime event stream through a forward SQL migration.
+- Publishes the transactional outbox into `public.event_stream` instead of Kafka.
+- Makes external payment, custody, price, compliance, and notification providers optional in development and mandatory where required in production.
+- Loads the repository-root `.env` consistently for every workspace.
+- Uses Webpack for local Next.js development to avoid the observed Turbopack panic/reload loop.
 
 ## Apply
 
-Run from any shell, replacing `TARGET` with the project root:
+Overlay the patch onto the project, remove the obsolete `docker-compose.yml`, then run:
 
 ```bash
-PATCH="/path/to/zoryqon-financial-core-patch-2026-07-30.zip"
-TARGET="/path/to/zoryqon"
-STAGE="$(mktemp -d)"
-unzip -q "$PATCH" -d "$STAGE"
-rsync -av "$STAGE/" "$TARGET/"
-cd "$TARGET"
 npm ci
-npm run verify
+npm run env:init
 ```
 
-Apply the new forward migration using the project's existing deployment process.
-Do not rewrite an already-applied baseline migration; reconcile its recorded
-checksum first if an older branded baseline exists in a persistent environment.
+Paste the real Supabase values into `.env`, then run:
+
+```bash
+npm run env:check
+npm run dev:setup
+npm run dev
+```
+
+`dev:setup` applies migrations directly to the configured remote Supabase database. It never starts Docker.
 
 ## Release status
 
-The code delivery remains **NO-GO** for production customer funds until the
-external, regulatory, provider, infrastructure and test gates in
-`DELIVERY_REPORT.md` and `docs/PRODUCTION_READINESS_REPORT.md` have dated
-evidence.
+The technical Supabase integration does not by itself authorize production trading or customer funds. Close the external provider, security, legal, regulatory, operational, backup, and testing gates documented in the production readiness report before launch.

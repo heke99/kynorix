@@ -12,10 +12,7 @@ export class Database {
       max: 20,
       statement_timeout: 15_000,
       application_name: 'zoryqon-api',
-      ssl:
-        config.databaseSsl === 'disable'
-          ? false
-          : { rejectUnauthorized: config.databaseSsl === 'verify-full' },
+      ssl: { rejectUnauthorized: config.databaseSsl === 'verify-full' },
     });
     this.pool.on('error', (error) => {
       process.stderr.write(`Database pool error: ${error.message}\n`);

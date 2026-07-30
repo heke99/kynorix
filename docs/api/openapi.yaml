@@ -112,21 +112,48 @@ paths:
   /v1/auth/login:
     get:
       tags: [Identity]
-      operationId: beginLogin
+      operationId: openLogin
       parameters:
         - { name: returnTo, in: query, schema: { type: string, default: / } }
       responses:
-        '302': { description: Redirect to the configured OIDC provider }
-  /v1/auth/callback:
-    get:
+        '302': { description: Redirect to the Zoryqon web sign-in page }
+  /v1/auth/sign-in:
+    post:
       tags: [Identity]
-      operationId: completeLogin
-      parameters:
-        - { name: code, in: query, required: true, schema: { type: string } }
-        - { name: state, in: query, required: true, schema: { type: string } }
+      operationId: signIn
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8, maxLength: 256 }
       responses:
-        '302':
-          { description: Secure cookies set and browser redirected to the validated return path }
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/auth/sign-up:
+    post:
+      tags: [Identity]
+      operationId: signUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, password, displayName]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8, maxLength: 256 }
+                displayName: { type: string, minLength: 2, maxLength: 100 }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Error' }
   /v1/auth/refresh:
     post:
       tags: [Identity]
@@ -459,7 +486,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: OIDC access token verified by issuer, audience, signature, and expiry.
+      description: Supabase Auth access token verified by issuer, audience, signature, and expiry.
     cookieAuth:
       type: apiKey
       in: cookie

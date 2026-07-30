@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --webpack --port 3001",
-    "build": "next build --webpack",
-    "start": "next start --port 3001",
+    "dev": "node ../../scripts/run-next.mjs dev --webpack --port 3001",
+    "build": "node ../../scripts/run-next.mjs build",
+    "start": "node ../../scripts/run-next.mjs start --port 3001",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "predev": "node ../../scripts/clean-next-cache.mjs"

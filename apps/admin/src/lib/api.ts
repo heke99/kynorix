@@ -20,7 +20,11 @@ function configuredApiUrl(): string | null {
   return value ? value.replace(/\/$/, '') : null;
 }
 
-async function adminApi<T>(path: string, init?: RequestInit): Promise<T> {
+export async function adminApi<T>(path: string, init?: RequestInit): Promise<T> {
+  return request<T>(path, init, true);
+}
+
+async function request<T>(path: string, init: RequestInit | undefined, allowRefresh: boolean): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body) headers.set('content-type', 'application/json');
   const csrf = readCookie('zoryqon_csrf');
@@ -31,24 +35,41 @@ async function adminApi<T>(path: string, init?: RequestInit): Promise<T> {
     credentials: 'include',
     cache: 'no-store',
   });
+  if (response.status === 401 && allowRefresh && !path.startsWith('/v1/auth/')) {
+    const refreshed = await refreshSession();
+    if (refreshed) return request<T>(path, init, false);
+  }
   const body = (await response.json()) as ApiEnvelope<T> & {
     error?: { message?: string; code?: string };
   };
   if (!response.ok) {
     const error = new Error(body.error?.message ?? body.error?.code ?? 'API request failed.');
-    Object.assign(error, { status: response.status });
+    Object.assign(error, { status: response.status, code: body.error?.code });
     throw error;
   }
   return body.data;
 }
 
+async function refreshSession(): Promise<boolean> {
+  const headers = new Headers({ 'content-type': 'application/json' });
+  const csrf = readCookie('zoryqon_csrf');
+  if (csrf) headers.set('x-csrf-token', csrf);
+  try {
+    const response = await fetch(`${apiUrl()}/v1/auth/refresh`, {
+      method: 'POST',
+      headers,
+      credentials: 'include',
+      cache: 'no-store',
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
 export const operationsApi = {
   me: () => adminApi<AuthenticatedUser>('/v1/me'),
-  loginUrl: () => {
-    const baseUrl = configuredApiUrl();
-    if (!baseUrl) throw new Error('Operations identity configuration is unavailable.');
-    return `${baseUrl}/v1/auth/login?returnTo=${encodeURIComponent('/')}`;
-  },
+  loginUrl: () => '/login',
   overview: () =>
     adminApi<{
       open_markets: string;

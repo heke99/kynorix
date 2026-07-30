@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@zoryqon/core": "*",
-    "kafkajs": "^2.2.4",
     "pg": "^8.16.0",
     "zod": "^4.0.0"
   },

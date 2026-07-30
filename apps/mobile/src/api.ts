@@ -14,7 +14,6 @@ import type {
   Position,
   Withdrawal,
 } from '@zoryqon/contracts';
-import * as AuthSession from 'expo-auth-session';
 import * as SecureStore from 'expo-secure-store';
 
 const ACCESS_TOKEN_KEY = 'zoryqon.access-token';
@@ -61,17 +60,13 @@ async function rotateTokens(): Promise<boolean> {
 
 async function performTokenRotation(): Promise<boolean> {
   const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
-  const issuer = process.env.EXPO_PUBLIC_OIDC_ISSUER;
-  const clientId = process.env.EXPO_PUBLIC_OIDC_CLIENT_ID;
-  if (!refreshToken || !issuer || !clientId) return false;
+  if (!refreshToken) return false;
   try {
-    const discovery = await AuthSession.fetchDiscoveryAsync(issuer);
-    const tokens = await AuthSession.refreshAsync(
-      { clientId, refreshToken, scopes: ['openid', 'profile', 'email', 'offline_access'] },
-      discovery,
-    );
-    if (!tokens.accessToken) return false;
-    await mobileApi.saveTokens(tokens.accessToken, tokens.refreshToken ?? refreshToken);
+    const tokens = await supabaseAuth('/auth/v1/token?grant_type=refresh_token', {
+      refresh_token: refreshToken,
+    });
+    if (!tokens.access_token) return false;
+    await mobileApi.saveTokens(tokens.access_token, tokens.refresh_token ?? refreshToken);
     return true;
   } catch {
     await mobileApi.clearTokens();
@@ -79,7 +74,52 @@ async function performTokenRotation(): Promise<boolean> {
   }
 }
 
+async function supabaseAuth(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<{ access_token?: string; refresh_token?: string; message?: string; error_description?: string }> {
+  const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const key = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) throw new Error('Supabase mobile authentication is not configured.');
+  const response = await fetch(`${url.replace(/\/$/, '')}${path}`, {
+    method: 'POST',
+    headers: {
+      apikey: key,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    message?: string;
+    error_description?: string;
+  };
+  if (!response.ok) throw new Error(payload.error_description ?? payload.message ?? 'Login failed.');
+  return payload;
+}
+
 export const mobileApi = {
+  signIn: async (email: string, password: string) => {
+    const tokens = await supabaseAuth('/auth/v1/token?grant_type=password', {
+      email: email.trim().toLowerCase(),
+      password,
+    });
+    if (!tokens.access_token || !tokens.refresh_token) throw new Error('Login returned no session.');
+    await mobileApi.saveTokens(tokens.access_token, tokens.refresh_token);
+  },
+  signUp: async (email: string, password: string, displayName: string) => {
+    const tokens = await supabaseAuth('/auth/v1/signup', {
+      email: email.trim().toLowerCase(),
+      password,
+      data: { display_name: displayName.trim() },
+    });
+    if (tokens.access_token && tokens.refresh_token) {
+      await mobileApi.saveTokens(tokens.access_token, tokens.refresh_token);
+      return { confirmationRequired: false };
+    }
+    return { confirmationRequired: true };
+  },
   markets: () => api<Page<Market>>('/v1/markets?limit=50'),
   me: () => api<AuthenticatedUser>('/v1/me'),
   balances: () => api<Balance[]>('/v1/balances'),

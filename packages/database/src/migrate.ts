@@ -9,8 +9,17 @@ loadRootEnvironment();
 
 const { Client } = pg;
 const directory = resolve(dirname(fileURLToPath(import.meta.url)), '../migrations');
-const databaseUrl = process.env.DATABASE_URL;
-if (!databaseUrl) throw new Error('DATABASE_URL is required');
+const databaseUrl = process.env.SUPABASE_DB_URL;
+if (!databaseUrl) throw new Error('SUPABASE_DB_URL is required. Copy it from Supabase > Connect.');
+const parsedUrl = new URL(databaseUrl);
+if (parsedUrl.hostname === 'localhost' || parsedUrl.hostname === '127.0.0.1') {
+  throw new Error('SUPABASE_DB_URL still points to localhost. Use the Supabase direct or session-pooler URL.');
+}
+if (parsedUrl.port === '6543') {
+  throw new Error(
+    'Use the Supabase direct connection or session pooler on port 5432 for migrations, not transaction mode on port 6543.',
+  );
+}
 
 const files = (await readdir(directory))
   .filter((file) => /^\d{14}_[a-z0-9_]+\.sql$/.test(file))
@@ -22,7 +31,11 @@ for (const file of files) {
   versions.add(version);
 }
 
-const client = new Client({ connectionString: databaseUrl });
+const client = new Client({
+  connectionString: databaseUrl,
+  application_name: 'zoryqon-migrations',
+  ssl: { rejectUnauthorized: process.env.SUPABASE_DB_SSL === 'verify-full' },
+});
 await client.connect();
 try {
   await client.query('select pg_advisory_lock($1)', [1_963_074_903]);

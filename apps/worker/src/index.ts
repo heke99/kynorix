@@ -1,20 +1,26 @@
 import { loadRootEnvironment } from './load-root-env.js';
 import { createHash } from 'node:crypto';
-import { Kafka } from 'kafkajs';
 import pg, { type PoolClient } from 'pg';
 import { z } from 'zod';
 
 loadRootEnvironment();
 
+const optionalUrl = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().url().optional(),
+);
+const optionalSecret = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().min(1).optional(),
+);
 const EnvironmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
-  DATABASE_URL: z.string().url(),
-  DATABASE_SSL: z.enum(['disable', 'require', 'verify-full']).default('require'),
-  EVENT_BROKER_URL: z.string().min(1),
-  PRICE_PROVIDER_BASE_URL: z.string().url(),
-  PRICE_PROVIDER_API_KEY: z.string().min(1),
-  NOTIFICATION_PROVIDER_BASE_URL: z.string().url(),
-  NOTIFICATION_PROVIDER_API_KEY: z.string().min(1),
+  SUPABASE_DB_URL: z.string().url(),
+  SUPABASE_DB_SSL: z.enum(['require', 'verify-full']).default('require'),
+  PRICE_PROVIDER_BASE_URL: optionalUrl,
+  PRICE_PROVIDER_API_KEY: optionalSecret,
+  NOTIFICATION_PROVIDER_BASE_URL: optionalUrl,
+  NOTIFICATION_PROVIDER_API_KEY: optionalSecret,
   WORKER_POLL_INTERVAL_MS: z.coerce.number().int().min(250).max(60_000).default(1_000),
 });
 const ScheduledMarketDefinitionSchema = z.object({
@@ -45,32 +51,31 @@ if (!parsed.success) {
   );
 }
 const config = parsed.data;
+assertProviderPair(
+  'PRICE_PROVIDER',
+  config.PRICE_PROVIDER_BASE_URL,
+  config.PRICE_PROVIDER_API_KEY,
+  config.NODE_ENV === 'production',
+);
+assertProviderPair(
+  'NOTIFICATION_PROVIDER',
+  config.NOTIFICATION_PROVIDER_BASE_URL,
+  config.NOTIFICATION_PROVIDER_API_KEY,
+  config.NODE_ENV === 'production',
+);
 if (config.NODE_ENV === 'production') {
-  assertProductionEndpoint('PRICE_PROVIDER_BASE_URL', config.PRICE_PROVIDER_BASE_URL);
+  assertProductionEndpoint('PRICE_PROVIDER_BASE_URL', config.PRICE_PROVIDER_BASE_URL!);
   assertProductionEndpoint(
     'NOTIFICATION_PROVIDER_BASE_URL',
-    config.NOTIFICATION_PROVIDER_BASE_URL,
+    config.NOTIFICATION_PROVIDER_BASE_URL!,
   );
 }
 const { Pool } = pg;
 const pool = new Pool({
-  connectionString: config.DATABASE_URL,
+  connectionString: config.SUPABASE_DB_URL,
   application_name: 'zoryqon-worker',
-  ssl:
-    config.DATABASE_SSL === 'disable'
-      ? false
-      : { rejectUnauthorized: config.DATABASE_SSL === 'verify-full' },
+  ssl: { rejectUnauthorized: config.SUPABASE_DB_SSL === 'verify-full' },
 });
-const broker = new URL(config.EVENT_BROKER_URL);
-const kafka = new Kafka({
-  clientId: 'zoryqon-worker',
-  brokers: [`${broker.hostname}:${broker.port || '9092'}`],
-});
-const producer = kafka.producer({
-  allowAutoTopicCreation: config.NODE_ENV !== 'production',
-  idempotent: true,
-});
-await producer.connect();
 const workerRef = `${process.env.HOSTNAME ?? 'worker'}:${process.pid}`;
 
 let stopping = false;
@@ -98,10 +103,10 @@ while (!stopping) {
   await new Promise((resolve) => setTimeout(resolve, remaining));
 }
 
-await producer.disconnect();
 await pool.end();
 
 async function ingestPrices(): Promise<void> {
+  if (!config.PRICE_PROVIDER_BASE_URL || !config.PRICE_PROVIDER_API_KEY) return;
   const jobs = await pool.query<{
     provider_id: string;
     instrument_id: string;
@@ -1100,29 +1105,28 @@ async function publishOutbox(): Promise<void> {
   );
   for (const event of events.rows) {
     try {
-      await producer.send({
-        topic: 'zoryqon.events.v1',
-        acks: -1,
-        messages: [
-          {
-            key: event.channel,
-            value: JSON.stringify({
-              eventId: event.event_ref,
-              channel: event.channel,
-              eventType: event.event_type,
-              sequence: event.sequence,
-              serverTimestamp: event.occurred_at,
-              payloadVersion: event.payload_version,
-              payload: event.payload,
-            }),
-          },
-        ],
+      await withTransaction(async (client) => {
+        await client.query(
+          `insert into public.event_stream
+           (event_ref,event_type,channel,sequence,payload_version,payload,occurred_at)
+           values ($1,$2,$3,$4,$5,$6,$7)
+           on conflict (event_ref) do nothing`,
+          [
+            event.event_ref,
+            event.event_type,
+            event.channel,
+            event.sequence,
+            event.payload_version,
+            event.payload,
+            event.occurred_at,
+          ],
+        );
+        await client.query(
+          `update public.outbox_events set published_at = clock_timestamp(),
+            locked_at = null, locked_by = null where id = $1 and locked_by = $2`,
+          [event.id, workerRef],
+        );
       });
-      await pool.query(
-        `update public.outbox_events set published_at = clock_timestamp(),
-          locked_at = null, locked_by = null where id = $1 and locked_by = $2`,
-        [event.id, workerRef],
-      );
     } catch {
       await pool.query(
         `update public.outbox_events set attempt_count = attempt_count + 1,
@@ -1137,6 +1141,7 @@ async function publishOutbox(): Promise<void> {
 }
 
 async function deliverNotifications(): Promise<void> {
+  if (!config.NOTIFICATION_PROVIDER_BASE_URL || !config.NOTIFICATION_PROVIDER_API_KEY) return;
   const deliveries = await withTransaction((client) =>
     client.query<{
       id: string;
@@ -1349,6 +1354,18 @@ async function runJob(name: string, operation: () => Promise<void>): Promise<voi
     await operation();
   } catch (error) {
     workerError(name, error);
+  }
+}
+
+function assertProviderPair(
+  name: string,
+  baseUrl: string | undefined,
+  apiKey: string | undefined,
+  required: boolean,
+): void {
+  if (!baseUrl && !apiKey && !required) return;
+  if (!baseUrl || !apiKey) {
+    throw new Error(`${name}_BASE_URL and ${name}_API_KEY must be configured together.`);
   }
 }
 

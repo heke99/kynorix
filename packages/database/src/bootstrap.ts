@@ -4,7 +4,7 @@ import pg, { type PoolClient } from 'pg';
 
 loadRootEnvironment();
 
-const databaseUrl = required('DATABASE_URL');
+const databaseUrl = required('SUPABASE_DB_URL');
 const operatorRef = required('OPERATOR_REF');
 const command = process.argv[2];
 if (!command) {
@@ -13,7 +13,11 @@ if (!command) {
   );
 }
 
-const client = new pg.Client({ connectionString: databaseUrl });
+const client = new pg.Client({
+  connectionString: databaseUrl,
+  application_name: 'zoryqon-bootstrap',
+  ssl: { rejectUnauthorized: process.env.SUPABASE_DB_SSL === 'verify-full' },
+});
 await client.connect();
 try {
   await client.query('begin');
@@ -39,7 +43,7 @@ async function run(
 }> {
   if (value === 'first-admin') {
     const tenantRef = required('TENANT_REF');
-    const oidcSubject = required('ADMIN_OIDC_SUBJECT');
+    const supabaseUserId = required('ADMIN_SUPABASE_USER_ID');
     const userRef = required('ADMIN_USER_REF');
     const email = required('ADMIN_EMAIL').toLowerCase();
     const displayName = required('ADMIN_DISPLAY_NAME');
@@ -61,11 +65,11 @@ async function run(
     const tenantId = tenant.rows[0]!.id;
     const user = await db.query<{ id: string }>(
       `insert into public.users
-       (tenant_id,user_ref,oidc_subject,account_status,customer_type,kyc_level)
-       values ($1,$2,$3,'active','institutional_customer','institution')
-       on conflict (tenant_id,oidc_subject) do update set user_ref = excluded.user_ref
+       (tenant_id,user_ref,oidc_subject,supabase_user_id,account_status,customer_type,kyc_level)
+       values ($1,$2,$3,$3::uuid,'active','institutional_customer','institution')
+       on conflict (tenant_id,supabase_user_id) do update set user_ref = excluded.user_ref
        returning id`,
-      [tenantId, userRef, oidcSubject],
+      [tenantId, userRef, supabaseUserId],
     );
     const userId = user.rows[0]!.id;
     await db.query(

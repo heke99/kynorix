@@ -4,9 +4,7 @@
    reviewed commit. Generate an SBOM, scan dependencies and images, sign every
    deployed digest, and retain provenance.
 2. Provision separate development, test, staging, production, and
-   disaster-recovery accounts with private PostgreSQL, Redis, event broker,
-   object storage, secret management, encryption keys, monitoring, and audit
-   sinks.
+   disaster-recovery Supabase projects with isolated PostgreSQL, Auth, Storage, Realtime, secret management, encryption keys, monitoring, and audit sinks.
 3. Inject the complete environment contract from `.env.example`. Never place
    credentials in source, an image, a mobile bundle, or Terraform state.
 4. Run the migration job once. `schema_migrations` checks the filename and

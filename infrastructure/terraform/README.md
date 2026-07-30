@@ -1,24 +1,7 @@
-# Terraform boundary
+# Infrastructure boundary
 
-Cloud provider, region, legal data residency and account topology must be chosen
-before Terraform resources are instantiated. This directory intentionally does
-not create financial-production infrastructure from guessed inputs.
+Supabase is the canonical managed platform for Zoryqon PostgreSQL, Auth, Storage, and Realtime. Create separate Supabase projects for development/test, staging, production, and disaster recovery. Do not share database passwords, API keys, buckets, signing configuration, or Auth users between environments.
 
-The approved implementation must create separate accounts/projects for:
+The remaining approved infrastructure must provide KMS/HSM-backed secret management, WAF and DDoS controls, centralized audit/observability, provider connectivity, deployment identities, and encrypted backups. Supabase database backups and point-in-time recovery must be enabled at the plan level appropriate for production.
 
-- development and test,
-- staging,
-- production,
-- disaster recovery,
-- security logging.
-
-Required managed components are PostgreSQL with PITR, Redis, Kafka-compatible
-event streaming, immutable object storage, KMS/HSM, WAF, DDoS controls, secret
-management and centralized audit/observability. Production modules must be
-pinned to reviewed versions and deployed through a dedicated CI identity.
-
-Each environment must have a separate account or project, database, encryption
-keys, provider credentials, secrets, network boundary, and audit sink. Terraform
-state must use encrypted remote storage with locking. This repository does not
-guess a cloud provider, legal region, network range, or regulated provider;
-those inputs must be approved before a concrete root module is applied.
+Terraform in this directory intentionally does not create resources from guessed cloud, region, legal-residency, network, or regulated-provider inputs. Those inputs require approval before concrete modules are added. Terraform state must use encrypted remote storage with locking and a dedicated CI identity.
