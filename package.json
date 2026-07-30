@@ -1,0 +1,36 @@
+{
+  "name": "kynorix",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Kynorix modular event exchange platform — sandbox-first.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "npm run build:packages && npm run build:apps",
+    "build:apps": "npm run build -w @kynorix/api && npm run build -w @kynorix/web && npm run build -w @kynorix/admin && npm run build -w @kynorix/mobile",
+    "build:packages": "npm run build -w @kynorix/contracts && npm run build -w @kynorix/core && npm run build -w @kynorix/database",
+    "db:migrations:check": "node scripts/check-migrations.mjs",
+    "predev": "npm run build:packages",
+    "dev": "concurrently -n api,web,admin -c cyan,magenta,yellow \"npm run dev -w @kynorix/api\" \"npm run dev -w @kynorix/web\" \"npm run dev -w @kynorix/admin\"",
+    "dev:mobile": "npm run start -w @kynorix/mobile",
+    "format:check": "prettier --check .",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "verify": "npm run format:check && npm run db:migrations:check && npm run lint && npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "concurrently": "^9.2.0",
+    "prettier": "^3.6.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

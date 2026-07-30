@@ -1,0 +1,498 @@
+openapi: 3.1.0
+info:
+  title: Kynorix Sandbox API
+  version: 2026-07-30.1
+  description: |
+    Versioned API for virtual event markets. This release cannot enable
+    real-money trading, custody, deposits, withdrawals, spot crypto,
+    five-minute UP/DOWN or binary options.
+servers:
+  - url: http://localhost:4000
+    description: Local sandbox
+tags:
+  - name: System
+  - name: Markets
+  - name: Trading
+  - name: Portfolio
+  - name: Operations
+paths:
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/system/capabilities:
+    get:
+      tags: [System]
+      operationId: getCapabilities
+      responses:
+        '200':
+          description: Authoritative enabled and denied product capabilities
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/markets:
+    get:
+      tags: [Markets]
+      operationId: listMarkets
+      responses:
+        '200':
+          description: Market list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Market'
+  /v1/markets/{marketRef}:
+    get:
+      tags: [Markets]
+      operationId: getMarket
+      parameters:
+        - $ref: '#/components/parameters/MarketRef'
+      responses:
+        '200':
+          description: Market
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Market'
+        '404':
+          $ref: '#/components/responses/Error'
+  /v1/markets/{marketRef}/orderbook:
+    get:
+      tags: [Markets]
+      operationId: getOrderbook
+      parameters:
+        - $ref: '#/components/parameters/MarketRef'
+        - name: outcomeRef
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Sequenced depth snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/markets/{marketRef}/trades:
+    get:
+      tags: [Markets]
+      operationId: listTrades
+      parameters:
+        - $ref: '#/components/parameters/MarketRef'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        '200':
+          description: Most recent trades
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/orders:
+    post:
+      tags: [Trading]
+      operationId: placeOrder
+      security:
+        - SandboxUser: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceOrder'
+      responses:
+        '201':
+          description: Accepted, open, partially filled or filled order
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/Order'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+    get:
+      tags: [Trading]
+      operationId: listOrders
+      security:
+        - SandboxUser: []
+      responses:
+        '200':
+          description: User orders
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/orders/{orderRef}:
+    delete:
+      tags: [Trading]
+      operationId: cancelOrder
+      security:
+        - SandboxUser: []
+      parameters:
+        - name: orderRef
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Idempotent cancellation result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+        '404':
+          $ref: '#/components/responses/Error'
+  /v1/positions:
+    get:
+      tags: [Portfolio]
+      operationId: listPositions
+      security:
+        - SandboxUser: []
+      responses:
+        '200':
+          description: User positions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/balances:
+    get:
+      tags: [Portfolio]
+      operationId: listBalances
+      security:
+        - SandboxUser: []
+      responses:
+        '200':
+          description: Virtual available and locked balances
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/ledger:
+    get:
+      tags: [Portfolio]
+      operationId: listLedger
+      security:
+        - SandboxUser: []
+      responses:
+        '200':
+          description: Journals that affect the authenticated sandbox user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/admin/markets/{marketRef}/close-for-resolution:
+    post:
+      tags: [Operations]
+      operationId: closeForResolution
+      security:
+        - SandboxAdmin: []
+      parameters:
+        - $ref: '#/components/parameters/MarketRef'
+      responses:
+        '200':
+          description: Open orders cancelled and market moved to resolution_pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/admin/markets/{marketRef}/resolutions:
+    post:
+      tags: [Operations]
+      operationId: proposeResolution
+      security:
+        - SandboxAdmin: []
+      parameters:
+        - $ref: '#/components/parameters/MarketRef'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolutionProposalInput'
+      responses:
+        '201':
+          description: Resolution proposal awaiting independent officer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+  /v1/admin/resolutions/{proposalRef}/approve:
+    post:
+      tags: [Operations]
+      operationId: approveResolution
+      security:
+        - SandboxAdmin: []
+      parameters:
+        - name: proposalRef
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Independently approved and settled result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Envelope'
+        '400':
+          $ref: '#/components/responses/Error'
+components:
+  securitySchemes:
+    SandboxUser:
+      type: apiKey
+      in: header
+      name: x-kynorix-user
+      description: Demo-only identity boundary. Replace with OIDC before external use.
+    SandboxAdmin:
+      type: apiKey
+      in: header
+      name: x-kynorix-admin
+      description: Demo-only officer identity. Replace with scoped staff OIDC and MFA.
+  parameters:
+    MarketRef:
+      name: marketRef
+      in: path
+      required: true
+      schema:
+        type: string
+  responses:
+    Error:
+      description: Structured API error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+  schemas:
+    Envelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data: {}
+        meta:
+          type: object
+          additionalProperties: false
+          required: [requestRef, serverTime, sandbox]
+          properties:
+            requestRef:
+              type: string
+            serverTime:
+              type: string
+              format: date-time
+            sandbox:
+              const: true
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, requestRef]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestRef:
+              type: string
+            details: {}
+    Outcome:
+      type: object
+      additionalProperties: false
+      required: [outcomeRef, label, displayOrder]
+      properties:
+        outcomeRef:
+          type: string
+        label:
+          type: string
+        displayOrder:
+          type: integer
+          minimum: 0
+    Market:
+      type: object
+      additionalProperties: false
+      required:
+        - marketRef
+        - tenantRef
+        - productType
+        - title
+        - question
+        - category
+        - rules
+        - resolutionSource
+        - resolutionTime
+        - opensAt
+        - closesAt
+        - displayTimezone
+        - status
+        - collateralAsset
+        - payoutAtoms
+        - tickAtoms
+        - minimumOrderQuantity
+        - maximumPositionQuantity
+        - feeVersion
+        - immutableRuleVersion
+        - outcomes
+        - featured
+      properties:
+        marketRef: { type: string }
+        tenantRef: { type: string }
+        productType:
+          type: string
+          enum: [virtual_prediction, b2b_private_prediction]
+        title: { type: string }
+        question: { type: string }
+        category: { type: string }
+        rules: { type: string }
+        resolutionSource: { type: string, format: uri }
+        resolutionTime: { type: string, format: date-time }
+        opensAt: { type: string, format: date-time }
+        closesAt: { type: string, format: date-time }
+        displayTimezone: { type: string }
+        status:
+          type: string
+          enum:
+            - draft
+            - under_review
+            - approved
+            - scheduled
+            - pre_open
+            - open
+            - suspended
+            - closing
+            - closed
+            - resolution_pending
+            - disputed
+            - appealed
+            - resolved
+            - settling
+            - settled
+            - cancelled
+            - voided
+            - archived
+        collateralAsset: { type: string }
+        payoutAtoms: { type: string, pattern: '^[0-9]+$' }
+        tickAtoms: { type: string, pattern: '^[0-9]+$' }
+        minimumOrderQuantity: { type: string, pattern: '^[0-9]+$' }
+        maximumPositionQuantity: { type: string, pattern: '^[0-9]+$' }
+        feeVersion: { type: string }
+        immutableRuleVersion: { type: string }
+        outcomes:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/Outcome'
+        featured: { type: boolean }
+    PlaceOrder:
+      type: object
+      additionalProperties: false
+      required:
+        - marketRef
+        - outcomeRef
+        - side
+        - type
+        - priceAtoms
+        - quantity
+        - idempotencyKey
+      properties:
+        marketRef: { type: string }
+        outcomeRef: { type: string }
+        side: { type: string, enum: [buy, sell] }
+        type: { const: limit }
+        priceAtoms: { type: string, pattern: '^[0-9]+$' }
+        quantity: { type: string, pattern: '^[1-9][0-9]*$' }
+        timeInForce: { type: string, enum: [GTC, IOC, FOK], default: GTC }
+        postOnly: { type: boolean, default: false }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+    Order:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: '#/components/schemas/PlaceOrder'
+        - type: object
+          required:
+            - orderRef
+            - userRef
+            - status
+            - remainingQuantity
+            - sequence
+            - createdAt
+            - updatedAt
+          properties:
+            orderRef: { type: string }
+            userRef: { type: string }
+            status:
+              type: string
+              enum:
+                - received
+                - pending_validation
+                - accepted
+                - open
+                - partially_filled
+                - filled
+                - cancel_pending
+                - cancelled
+                - rejected
+                - expired
+                - suspended
+            remainingQuantity: { type: string, pattern: '^[0-9]+$' }
+            sequence: { type: string, pattern: '^[0-9]+$' }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+    ResolutionProposalInput:
+      type: object
+      additionalProperties: false
+      required: [outcomeRef, evidence, reason]
+      properties:
+        outcomeRef:
+          type: string
+        reason:
+          type: string
+          minLength: 20
+        evidence:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [source, capturedAt, contentHash, notes]
+            properties:
+              source: { type: string, format: uri }
+              capturedAt: { type: string, format: date-time }
+              contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+              notes: { type: string, minLength: 10 }

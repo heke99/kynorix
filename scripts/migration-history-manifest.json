@@ -1,0 +1,11 @@
+{
+  "algorithm": "sha256",
+  "generatedAt": "2026-07-30T00:15:29.000Z",
+  "migrations": [
+    {
+      "version": "20260730010000",
+      "filename": "20260730010000_initial_sandbox.sql",
+      "sha256": "0cef2c795369047ccb891f3c8d025e1a4a5ce506dc3e118756228448d07f2cde"
+    }
+  ]
+}

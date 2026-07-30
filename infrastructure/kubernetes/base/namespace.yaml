@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kynorix-sandbox
+  labels:
+    app.kubernetes.io/part-of: kynorix
+    kynorix.io/product-mode: sandbox
