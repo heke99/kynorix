@@ -38,7 +38,7 @@ npm ci
 npm run dev:setup
 ```
 
-`dev:setup` creates `.env` only when it is missing, generates the local
+`dev:setup` creates or completes the repository-root `.env`, generates missing local
 cryptographic secrets, starts PostgreSQL, Redis, Redpanda and MinIO, and applies
 all migrations. Replace every provider, OIDC and tenant placeholder in `.env`
 before using authentication, funding, custody, compliance, price ingestion or
@@ -49,6 +49,11 @@ Start all applications with:
 ```bash
 npm run dev
 ```
+
+`npm run dev` also completes `.env`, starts the local infrastructure, applies pending
+migrations, clears stale Next.js development caches and then starts every workspace.
+The web and operations applications use Webpack for local development because a
+Turbopack panic must not trigger a browser reload loop.
 
 API, worker, database, web and operations commands all load environment files
 from the repository root. No duplicate `apps/*/.env` files are required.
