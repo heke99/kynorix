@@ -11,15 +11,22 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.0.0",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^10.3.0",
     "@fastify/websocket": "^11.2.0",
     "@kynorix/contracts": "*",
     "@kynorix/core": "*",
     "fastify": "^5.4.0",
+    "fastify-raw-body": "^5.0.0",
+    "jose": "^6.0.12",
+    "pg": "^8.16.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.5",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }

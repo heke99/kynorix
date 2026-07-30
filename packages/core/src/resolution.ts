@@ -1,48 +1,29 @@
-import type { ResolutionEvidence } from '@kynorix/contracts';
-import { externalRef } from './id.js';
-
-export interface ResolutionProposal {
-  proposalRef: string;
-  marketRef: string;
-  outcomeRef: string;
-  proposedBy: string;
-  proposedAt: string;
-  reason: string;
-  evidence: ResolutionEvidence[];
-  approvals: Array<{ officerRef: string; approvedAt: string }>;
-  status: 'proposed' | 'approved' | 'rejected';
+export interface ResolutionApprovalInput {
+  proposalStatus: 'proposed' | 'approved' | 'rejected';
+  proposerRef: string;
+  approverRef: string;
+  existingApproverRefs: readonly string[];
 }
 
-export class ResolutionWorkflow {
-  private readonly proposals = new Map<string, ResolutionProposal>();
-
-  propose(input: Omit<ResolutionProposal, 'proposalRef' | 'proposedAt' | 'approvals' | 'status'>) {
-    const proposal: ResolutionProposal = {
-      ...input,
-      proposalRef: externalRef('rsp'),
-      proposedAt: new Date().toISOString(),
-      approvals: [],
-      status: 'proposed',
-    };
-    this.proposals.set(proposal.proposalRef, proposal);
-    return proposal;
+export function assertIndependentResolutionApproval(input: ResolutionApprovalInput): void {
+  if (input.proposalStatus !== 'proposed') {
+    throw new Error('RESOLUTION_PROPOSAL_NOT_OPEN');
   }
-
-  approve(proposalRef: string, officerRef: string): ResolutionProposal {
-    const proposal = this.proposals.get(proposalRef);
-    if (!proposal) throw new Error('RESOLUTION_PROPOSAL_NOT_FOUND');
-    if (proposal.status !== 'proposed') throw new Error('RESOLUTION_PROPOSAL_NOT_OPEN');
-    if (proposal.proposedBy === officerRef) throw new Error('FOUR_EYES_SAME_OFFICER_DENIED');
-    if (proposal.approvals.some((approval) => approval.officerRef === officerRef)) {
-      return proposal;
-    }
-    proposal.approvals.push({ officerRef, approvedAt: new Date().toISOString() });
-    // Proposer + one independent approver implements two-person control.
-    proposal.status = 'approved';
-    return proposal;
+  if (input.proposerRef === input.approverRef) {
+    throw new Error('INDEPENDENT_APPROVER_REQUIRED');
   }
-
-  get(proposalRef: string): ResolutionProposal | undefined {
-    return this.proposals.get(proposalRef);
+  if (input.existingApproverRefs.includes(input.approverRef)) {
+    throw new Error('RESOLUTION_ALREADY_REVIEWED_BY_USER');
   }
+}
+
+export function resolveDirection(
+  startAtoms: bigint,
+  endAtoms: bigint,
+  tieRule: 'void' | 'up' | 'down' | 'separate_outcome',
+): 'up' | 'down' | 'tie' | 'void' {
+  if (endAtoms > startAtoms) return 'up';
+  if (endAtoms < startAtoms) return 'down';
+  if (tieRule === 'up' || tieRule === 'down') return tieRule;
+  return tieRule === 'void' ? 'void' : 'tie';
 }

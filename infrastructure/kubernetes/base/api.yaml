@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api
-  namespace: kynorix-sandbox
+  namespace: kynorix
 spec:
   replicas: 2
   selector:
@@ -25,21 +25,17 @@ spec:
           ports:
             - name: http
               containerPort: 4000
-          env:
-            - name: KYNORIX_SANDBOX_MODE
-              value: 'true'
-            - name: KYNORIX_REAL_MONEY_ENABLED
-              value: 'false'
-            - name: KYNORIX_FIVE_MINUTE_MARKETS_ENABLED
-              value: 'false'
+          envFrom:
+            - secretRef:
+                name: kynorix-api-runtime
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: http
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /health/live
               port: http
             periodSeconds: 15
           resources:
@@ -59,7 +55,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: api
-  namespace: kynorix-sandbox
+  namespace: kynorix
 spec:
   selector:
     app: kynorix-api

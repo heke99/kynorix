@@ -1,321 +1,497 @@
 openapi: 3.1.0
 info:
-  title: Kynorix Sandbox API
-  version: 2026-07-30.1
-  description: |
-    Versioned API for virtual event markets. This release cannot enable
-    real-money trading, custody, deposits, withdrawals, spot crypto,
-    five-minute UP/DOWN or binary options.
+  title: Kynorix API
+  version: 1.0.0
+  description: Public market data, authenticated customer trading, provider callbacks, and protected operations.
 servers:
-  - url: http://localhost:4000
-    description: Local sandbox
+  - url: https://api.kynorix.com
+    description: Production
+security: []
 tags:
-  - name: System
-  - name: Markets
-  - name: Trading
-  - name: Portfolio
+  - name: Public
+  - name: Identity
+  - name: Customer
+  - name: Providers
   - name: Operations
 paths:
-  /health:
+  /health/live:
     get:
-      tags: [System]
-      operationId: getHealth
+      tags: [Public]
+      operationId: getLiveness
       responses:
-        '200':
-          description: Healthy
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
-  /v1/system/capabilities:
+        '200': { description: Process is alive }
+  /health/ready:
     get:
-      tags: [System]
-      operationId: getCapabilities
+      tags: [Public]
+      operationId: getReadiness
       responses:
-        '200':
-          description: Authoritative enabled and denied product capabilities
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
+        '200': { description: Every mandatory dependency and invariant is ready }
+        '503': { description: One or more mandatory checks failed }
+  /v1/system/status:
+    get:
+      tags: [Public]
+      operationId: getSystemStatus
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/categories:
+    get:
+      tags: [Public]
+      operationId: listCategories
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/assets:
+    get:
+      tags: [Public]
+      operationId: listAssets
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
   /v1/markets:
     get:
-      tags: [Markets]
+      tags: [Public]
       operationId: listMarkets
+      parameters:
+        - { name: query, in: query, schema: { type: string, maxLength: 200 } }
+        - { name: category, in: query, schema: { type: string } }
+        - {
+            name: sort,
+            in: query,
+            schema: { type: string, enum: [trending, volume, liquidity, newest, ending_soon] },
+          }
+        - { name: cursor, in: query, schema: { type: string } }
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 24 },
+          }
       responses:
-        '200':
-          description: Market list
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Envelope'
-                  - type: object
-                    properties:
-                      data:
-                        type: array
-                        items:
-                          $ref: '#/components/schemas/Market'
+        '200': { $ref: '#/components/responses/Success' }
   /v1/markets/{marketRef}:
+    parameters: [{ $ref: '#/components/parameters/MarketRef' }]
     get:
-      tags: [Markets]
+      tags: [Public]
       operationId: getMarket
-      parameters:
-        - $ref: '#/components/parameters/MarketRef'
       responses:
-        '200':
-          description: Market
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Envelope'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/Market'
-        '404':
-          $ref: '#/components/responses/Error'
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/Error' }
   /v1/markets/{marketRef}/orderbook:
+    parameters: [{ $ref: '#/components/parameters/MarketRef' }]
     get:
-      tags: [Markets]
-      operationId: getOrderbook
+      tags: [Public]
+      operationId: getOrderBook
       parameters:
-        - $ref: '#/components/parameters/MarketRef'
-        - name: outcomeRef
-          in: query
-          schema:
-            type: string
+        - { name: outcomeRef, in: query, schema: { type: string } }
       responses:
-        '200':
-          description: Sequenced depth snapshot
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
+        '200': { $ref: '#/components/responses/Success' }
   /v1/markets/{marketRef}/trades:
+    parameters: [{ $ref: '#/components/parameters/MarketRef' }]
     get:
-      tags: [Markets]
-      operationId: listTrades
+      tags: [Public]
+      operationId: listMarketTrades
       parameters:
-        - $ref: '#/components/parameters/MarketRef'
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 500
-            default: 100
+        - {
+            name: limit,
+            in: query,
+            schema: { type: integer, minimum: 1, maximum: 500, default: 100 },
+          }
       responses:
-        '200':
-          description: Most recent trades
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
-  /v1/orders:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/markets/{marketRef}/history:
+    parameters: [{ $ref: '#/components/parameters/MarketRef' }]
+    get:
+      tags: [Public]
+      operationId: getMarketHistory
+      parameters:
+        - { name: outcomeRef, in: query, required: true, schema: { type: string } }
+        - {
+            name: range,
+            in: query,
+            schema: { type: string, enum: [1H, 6H, 1D, 1W, 1M, ALL], default: 1D },
+          }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/auth/login:
+    get:
+      tags: [Identity]
+      operationId: beginLogin
+      parameters:
+        - { name: returnTo, in: query, schema: { type: string, default: / } }
+      responses:
+        '302': { description: Redirect to the configured OIDC provider }
+  /v1/auth/callback:
+    get:
+      tags: [Identity]
+      operationId: completeLogin
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+      responses:
+        '302':
+          { description: Secure cookies set and browser redirected to the validated return path }
+  /v1/auth/refresh:
     post:
-      tags: [Trading]
+      tags: [Identity]
+      operationId: refreshSession
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/auth/logout:
+    post:
+      tags: [Identity]
+      operationId: logout
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/me:
+    get:
+      tags: [Customer]
+      operationId: getMe
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Error' }
+  /v1/me/permissions:
+    get:
+      tags: [Customer]
+      operationId: getMyPermissions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/balances:
+    get:
+      tags: [Customer]
+      operationId: listBalances
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/positions:
+    get:
+      tags: [Customer]
+      operationId: listPositions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/trades:
+    get:
+      tags: [Customer]
+      operationId: listMyTrades
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/ledger:
+    get:
+      tags: [Customer]
+      operationId: listMyLedgerTransactions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/orders:
+    get:
+      tags: [Customer]
+      operationId: listOrders
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Customer]
       operationId: placeOrder
-      security:
-        - SandboxUser: []
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
       requestBody:
         required: true
         content:
           application/json:
-            schema:
-              $ref: '#/components/schemas/PlaceOrder'
+            schema: { $ref: '#/components/schemas/PlaceOrder' }
       responses:
-        '201':
-          description: Accepted, open, partially filled or filled order
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Envelope'
-                  - type: object
-                    properties:
-                      data:
-                        $ref: '#/components/schemas/Order'
-        '400':
-          $ref: '#/components/responses/Error'
-        '401':
-          $ref: '#/components/responses/Error'
-    get:
-      tags: [Trading]
-      operationId: listOrders
-      security:
-        - SandboxUser: []
+        '201': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Error' }
+  /v1/orders/quote:
+    post:
+      tags: [Customer]
+      operationId: quoteOrder
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrderQuoteRequest' }
       responses:
-        '200':
-          description: User orders
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
+        '200': { $ref: '#/components/responses/Success' }
   /v1/orders/{orderRef}:
     delete:
-      tags: [Trading]
+      tags: [Customer]
       operationId: cancelOrder
-      security:
-        - SandboxUser: []
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       parameters:
-        - name: orderRef
-          in: path
-          required: true
-          schema:
-            type: string
+        - { name: orderRef, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/CsrfToken' }
       responses:
-        '200':
-          description: Idempotent cancellation result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
-        '404':
-          $ref: '#/components/responses/Error'
-  /v1/positions:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/deposits:
     get:
-      tags: [Portfolio]
-      operationId: listPositions
-      security:
-        - SandboxUser: []
+      tags: [Customer]
+      operationId: listDeposits
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       responses:
-        '200':
-          description: User positions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
-  /v1/balances:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Customer]
+      operationId: createDeposit
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateDeposit' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /v1/withdrawals:
     get:
-      tags: [Portfolio]
-      operationId: listBalances
-      security:
-        - SandboxUser: []
+      tags: [Customer]
+      operationId: listWithdrawals
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       responses:
-        '200':
-          description: Virtual available and locked balances
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
-  /v1/ledger:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Customer]
+      operationId: createWithdrawal
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateWithdrawal' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /v1/withdrawals/{withdrawalRef}/confirm:
+    post:
+      tags: [Customer]
+      operationId: confirmWithdrawal
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters:
+        - { name: withdrawalRef, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IdempotencyConfirmation' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/verification:
     get:
-      tags: [Portfolio]
-      operationId: listLedger
-      security:
-        - SandboxUser: []
+      tags: [Customer]
+      operationId: getVerification
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       responses:
-        '200':
-          description: Journals that affect the authenticated sandbox user
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
-  /v1/admin/markets/{marketRef}/close-for-resolution:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/verification/start:
+    post:
+      tags: [Customer]
+      operationId: startVerification
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /v1/sessions:
+    get:
+      tags: [Customer]
+      operationId: listSessions
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/sessions/{sessionRef}:
+    delete:
+      tags: [Customer]
+      operationId: revokeSession
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters:
+        - { name: sessionRef, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/notification-preferences:
+    get:
+      tags: [Customer]
+      operationId: getNotificationPreferences
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    put:
+      tags: [Customer]
+      operationId: updateNotificationPreferences
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/provider-webhooks/payment:
+    post:
+      tags: [Providers]
+      operationId: receivePaymentEvent
+      parameters:
+        - { name: x-provider-signature, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: Duplicate event acknowledged }
+        '202': { description: New verified event processed }
+        '400': { $ref: '#/components/responses/Error' }
+  /v1/admin/overview:
+    get:
+      tags: [Operations]
+      operationId: getOperationsOverview
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '403': { $ref: '#/components/responses/Error' }
+  /v1/admin/deposits:
+    get:
+      tags: [Operations]
+      operationId: listOperationsDeposits
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/admin/withdrawals:
+    get:
+      tags: [Operations]
+      operationId: listOperationsWithdrawals
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/admin/compliance/cases:
+    get:
+      tags: [Operations]
+      operationId: listComplianceCases
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/admin/reconciliation:
+    get:
+      tags: [Operations]
+      operationId: listReconciliationItems
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/admin/audit:
+    get:
+      tags: [Operations]
+      operationId: listAuditEvents
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/admin/price-feeds:
+    get:
+      tags: [Operations]
+      operationId: listPriceFeedHealth
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/admin/ledger:
+    get:
+      tags: [Operations]
+      operationId: listOperationsLedger
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/admin/markets:
+    get:
+      tags: [Operations]
+      operationId: listOperationsMarkets
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
     post:
       tags: [Operations]
-      operationId: closeForResolution
-      security:
-        - SandboxAdmin: []
-      parameters:
-        - $ref: '#/components/parameters/MarketRef'
+      operationId: createMarket
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/CsrfToken' }]
       responses:
-        '200':
-          description: Open orders cancelled and market moved to resolution_pending
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
-  /v1/admin/markets/{marketRef}/resolutions:
+        '201': { $ref: '#/components/responses/Success' }
+  /v1/admin/markets/{marketRef}/{action}:
+    post:
+      tags: [Operations]
+      operationId: transitionMarket
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/MarketRef' }
+        - {
+            name: action,
+            in: path,
+            required: true,
+            schema:
+              { type: string, enum: [submit, approve, publish, suspend, resume, close, void] },
+          }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /v1/admin/markets/{marketRef}/resolution:
     post:
       tags: [Operations]
       operationId: proposeResolution
-      security:
-        - SandboxAdmin: []
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       parameters:
-        - $ref: '#/components/parameters/MarketRef'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ResolutionProposalInput'
+        - { $ref: '#/components/parameters/MarketRef' }
+        - { $ref: '#/components/parameters/CsrfToken' }
       responses:
-        '201':
-          description: Resolution proposal awaiting independent officer
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
-  /v1/admin/resolutions/{proposalRef}/approve:
+        '201': { $ref: '#/components/responses/Success' }
+  /v1/admin/resolutions/{resolutionRef}/approve:
     post:
       tags: [Operations]
       operationId: approveResolution
-      security:
-        - SandboxAdmin: []
+      security: [{ bearerAuth: [] }, { cookieAuth: [] }]
       parameters:
-        - name: proposalRef
-          in: path
-          required: true
-          schema:
-            type: string
+        - { name: resolutionRef, in: path, required: true, schema: { type: string } }
+        - { $ref: '#/components/parameters/CsrfToken' }
       responses:
-        '200':
-          description: Independently approved and settled result
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Envelope'
-        '400':
-          $ref: '#/components/responses/Error'
+        '200': { $ref: '#/components/responses/Success' }
 components:
   securitySchemes:
-    SandboxUser:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OIDC access token verified by issuer, audience, signature, and expiry.
+    cookieAuth:
       type: apiKey
-      in: header
-      name: x-kynorix-user
-      description: Demo-only identity boundary. Replace with OIDC before external use.
-    SandboxAdmin:
-      type: apiKey
-      in: header
-      name: x-kynorix-admin
-      description: Demo-only officer identity. Replace with scoped staff OIDC and MFA.
+      in: cookie
+      name: kynorix_access
   parameters:
     MarketRef:
       name: marketRef
       in: path
       required: true
-      schema:
-        type: string
-  responses:
-    Error:
-      description: Structured API error
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/ApiError'
+      schema: { type: string }
+    CsrfToken:
+      name: x-csrf-token
+      in: header
+      required: false
+      description: Required for cookie-authenticated state changes; bearer-token requests do not use it.
+      schema: { type: string }
   schemas:
+    Meta:
+      type: object
+      additionalProperties: false
+      required: [requestRef, serverTime]
+      properties:
+        requestRef: { type: string }
+        serverTime: { type: string, format: date-time }
     Envelope:
       type: object
       additionalProperties: false
       required: [data, meta]
       properties:
         data: {}
-        meta:
-          type: object
-          additionalProperties: false
-          required: [requestRef, serverTime, sandbox]
-          properties:
-            requestRef:
-              type: string
-            serverTime:
-              type: string
-              format: date-time
-            sandbox:
-              const: true
-    ApiError:
+        meta: { $ref: '#/components/schemas/Meta' }
+    Error:
       type: object
       additionalProperties: false
       required: [error]
@@ -325,174 +501,66 @@ components:
           additionalProperties: false
           required: [code, message, requestRef]
           properties:
-            code:
-              type: string
-            message:
-              type: string
-            requestRef:
-              type: string
+            code: { type: string }
+            message: { type: string }
+            requestRef: { type: string }
             details: {}
-    Outcome:
+    OrderQuoteRequest:
       type: object
       additionalProperties: false
-      required: [outcomeRef, label, displayOrder]
-      properties:
-        outcomeRef:
-          type: string
-        label:
-          type: string
-        displayOrder:
-          type: integer
-          minimum: 0
-    Market:
-      type: object
-      additionalProperties: false
-      required:
-        - marketRef
-        - tenantRef
-        - productType
-        - title
-        - question
-        - category
-        - rules
-        - resolutionSource
-        - resolutionTime
-        - opensAt
-        - closesAt
-        - displayTimezone
-        - status
-        - collateralAsset
-        - payoutAtoms
-        - tickAtoms
-        - minimumOrderQuantity
-        - maximumPositionQuantity
-        - feeVersion
-        - immutableRuleVersion
-        - outcomes
-        - featured
-      properties:
-        marketRef: { type: string }
-        tenantRef: { type: string }
-        productType:
-          type: string
-          enum: [virtual_prediction, b2b_private_prediction]
-        title: { type: string }
-        question: { type: string }
-        category: { type: string }
-        rules: { type: string }
-        resolutionSource: { type: string, format: uri }
-        resolutionTime: { type: string, format: date-time }
-        opensAt: { type: string, format: date-time }
-        closesAt: { type: string, format: date-time }
-        displayTimezone: { type: string }
-        status:
-          type: string
-          enum:
-            - draft
-            - under_review
-            - approved
-            - scheduled
-            - pre_open
-            - open
-            - suspended
-            - closing
-            - closed
-            - resolution_pending
-            - disputed
-            - appealed
-            - resolved
-            - settling
-            - settled
-            - cancelled
-            - voided
-            - archived
-        collateralAsset: { type: string }
-        payoutAtoms: { type: string, pattern: '^[0-9]+$' }
-        tickAtoms: { type: string, pattern: '^[0-9]+$' }
-        minimumOrderQuantity: { type: string, pattern: '^[0-9]+$' }
-        maximumPositionQuantity: { type: string, pattern: '^[0-9]+$' }
-        feeVersion: { type: string }
-        immutableRuleVersion: { type: string }
-        outcomes:
-          type: array
-          minItems: 2
-          items:
-            $ref: '#/components/schemas/Outcome'
-        featured: { type: boolean }
-    PlaceOrder:
-      type: object
-      additionalProperties: false
-      required:
-        - marketRef
-        - outcomeRef
-        - side
-        - type
-        - priceAtoms
-        - quantity
-        - idempotencyKey
+      required: [marketRef, outcomeRef, side, priceAtoms, quantity]
       properties:
         marketRef: { type: string }
         outcomeRef: { type: string }
         side: { type: string, enum: [buy, sell] }
-        type: { const: limit }
-        priceAtoms: { type: string, pattern: '^[0-9]+$' }
+        priceAtoms: { type: string, pattern: '^[1-9][0-9]*$' }
         quantity: { type: string, pattern: '^[1-9][0-9]*$' }
         timeInForce: { type: string, enum: [GTC, IOC, FOK], default: GTC }
         postOnly: { type: boolean, default: false }
-        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
-    Order:
-      unevaluatedProperties: false
+        maximumSlippageBasisPoints: { type: integer, minimum: 0, maximum: 10000 }
+    PlaceOrder:
       allOf:
-        - $ref: '#/components/schemas/PlaceOrder'
+        - { $ref: '#/components/schemas/OrderQuoteRequest' }
         - type: object
-          required:
-            - orderRef
-            - userRef
-            - status
-            - remainingQuantity
-            - sequence
-            - createdAt
-            - updatedAt
+          additionalProperties: false
+          required: [type, quoteRef, idempotencyKey]
           properties:
-            orderRef: { type: string }
-            userRef: { type: string }
-            status:
-              type: string
-              enum:
-                - received
-                - pending_validation
-                - accepted
-                - open
-                - partially_filled
-                - filled
-                - cancel_pending
-                - cancelled
-                - rejected
-                - expired
-                - suspended
-            remainingQuantity: { type: string, pattern: '^[0-9]+$' }
-            sequence: { type: string, pattern: '^[0-9]+$' }
-            createdAt: { type: string, format: date-time }
-            updatedAt: { type: string, format: date-time }
-    ResolutionProposalInput:
+            type: { const: limit }
+            quoteRef: { type: string }
+            idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+    CreateDeposit:
       type: object
       additionalProperties: false
-      required: [outcomeRef, evidence, reason]
+      required: [method, asset, amountAtoms, idempotencyKey]
       properties:
-        outcomeRef:
-          type: string
-        reason:
-          type: string
-          minLength: 20
-        evidence:
-          type: array
-          minItems: 1
-          items:
-            type: object
-            additionalProperties: false
-            required: [source, capturedAt, contentHash, notes]
-            properties:
-              source: { type: string, format: uri }
-              capturedAt: { type: string, format: date-time }
-              contentHash: { type: string, pattern: '^[a-f0-9]{64}$' }
-              notes: { type: string, minLength: 10 }
+        method: { type: string, enum: [bank_transfer, open_banking, card, stablecoin, crypto] }
+        asset: { type: string }
+        amountAtoms: { type: string, pattern: '^[1-9][0-9]*$' }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+    CreateWithdrawal:
+      type: object
+      additionalProperties: false
+      required: [method, asset, amountAtoms, destinationRef, idempotencyKey]
+      properties:
+        method: { type: string, enum: [bank_transfer, stablecoin, crypto] }
+        asset: { type: string }
+        amountAtoms: { type: string, pattern: '^[1-9][0-9]*$' }
+        destinationRef: { type: string }
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+    IdempotencyConfirmation:
+      type: object
+      additionalProperties: false
+      required: [idempotencyKey]
+      properties:
+        idempotencyKey: { type: string, minLength: 8, maxLength: 128 }
+  responses:
+    Success:
+      description: Successful response
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Envelope' }
+    Error:
+      description: Request rejected
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

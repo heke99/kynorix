@@ -1,15 +1,16 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { AppHeader } from '../components/AppHeader';
 import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Kynorix — Event Exchange',
-  description: 'Virtuella, transparenta eventmarknader för bättre prognoser.',
+  description: 'Trade transparent event markets with published rules and verifiable outcomes.',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="sv">
+    <html lang="en">
       <body>
         <AppHeader />
         <main>{children}</main>
@@ -17,7 +18,13 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <div className="brand footer-brand">
             <span className="brand-mark">K</span> kynorix
           </div>
-          <p>Sandbox för teknisk validering. Inga riktiga pengar, insättningar eller uttag.</p>
+          <nav aria-label="Legal links">
+            <Link href="/legal/terms">Terms</Link>
+            <Link href="/legal/privacy">Privacy</Link>
+            <Link href="/legal/risk-disclosure">Risk disclosure</Link>
+            <Link href="/support">Support</Link>
+          </nav>
+          <p>Trading involves risk. Market availability depends on eligibility and jurisdiction.</p>
         </footer>
       </body>
     </html>

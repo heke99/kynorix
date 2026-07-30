@@ -1,107 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { buildServer } from './server.js';
+import { loadConfig } from './config.js';
 
-const config = {
-  host: '127.0.0.1',
-  port: 4000,
-  webOrigins: ['http://localhost:3000'],
-  sandboxMode: true as const,
-};
-
-describe('Kynorix sandbox API', () => {
-  it('exposes only the approved sandbox capability set', async () => {
-    const app = await buildServer(config);
-    const response = await app.inject({ method: 'GET', url: '/v1/system/capabilities' });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().data.enabled).toContain('virtual_prediction');
-    expect(response.json().data.denied).toContain('five_minute_up_down');
-    await app.close();
+describe('production configuration', () => {
+  it('fails closed when mandatory infrastructure or provider settings are absent', () => {
+    expect(() => loadConfig({ NODE_ENV: 'production' })).toThrow(
+      /Invalid or missing production configuration/,
+    );
   });
 
-  it('places an idempotent order and never charges twice', async () => {
-    const app = await buildServer(config);
-    const payload = {
-      marketRef: 'mkt_riksbank_2026',
-      outcomeRef: 'mkt_riksbank_2026_yes',
-      side: 'buy',
-      type: 'limit',
-      priceAtoms: '55',
-      quantity: '10',
-      timeInForce: 'GTC',
-      postOnly: false,
-      idempotencyKey: 'api-test-order-0001',
-    };
-    const first = await app.inject({
-      method: 'POST',
-      url: '/v1/orders',
-      headers: { 'x-kynorix-user': 'demo-alex' },
-      payload,
+  it('accepts a complete explicit configuration', () => {
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      API_HOST: '127.0.0.1',
+      API_PORT: '4000',
+      WEB_ORIGINS: 'https://app.example.test',
+      DATABASE_URL: 'postgresql://user:password@database.example.test:5432/kynorix',
+      DATABASE_SSL: 'require',
+      REDIS_URL: 'redis://redis.example.test:6379',
+      EVENT_BROKER_URL: 'tcp://broker.example.test:9092',
+      OBJECT_STORAGE_ENDPOINT: 'https://objects.example.test',
+      OBJECT_STORAGE_BUCKET: 'kynorix-test',
+      OIDC_ISSUER: 'https://identity.example.test',
+      OIDC_AUDIENCE: 'kynorix-api',
+      OIDC_CLIENT_ID: 'kynorix-web',
+      OIDC_CLIENT_SECRET: 'secret',
+      OIDC_REDIRECT_URI: 'https://api.example.test/v1/auth/callback',
+      SESSION_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64url'),
+      KYNORIX_TENANT_REF: 'tenant_test',
+      PAYMENT_PROVIDER_BASE_URL: 'https://payments.example.test',
+      PAYMENT_PROVIDER_API_KEY: 'payment-key',
+      PAYMENT_PROVIDER_WEBHOOK_SECRET: 'a'.repeat(32),
+      CUSTODY_PROVIDER_BASE_URL: 'https://custody.example.test',
+      CUSTODY_PROVIDER_API_KEY: 'custody-key',
+      PRICE_PROVIDER_BASE_URL: 'https://prices.example.test',
+      PRICE_PROVIDER_API_KEY: 'price-key',
+      COMPLIANCE_PROVIDER_BASE_URL: 'https://compliance.example.test',
+      COMPLIANCE_PROVIDER_API_KEY: 'compliance-key',
     });
-    const second = await app.inject({
-      method: 'POST',
-      url: '/v1/orders',
-      headers: { 'x-kynorix-user': 'demo-alex' },
-      payload,
-    });
-    expect(first.statusCode).toBe(201);
-    expect(second.statusCode).toBe(201);
-    expect(first.json().data.orderRef).toBe(second.json().data.orderRef);
-    const balance = await app.inject({
-      method: 'GET',
-      url: '/v1/balances',
-      headers: { 'x-kynorix-user': 'demo-alex' },
-    });
-    expect(balance.json().data[0]).toEqual({
-      asset: 'VSEK',
-      availableAtoms: '999448',
-      lockedAtoms: '0',
-    });
-    await app.close();
-  });
-
-  it('requires two distinct officers before settlement', async () => {
-    const app = await buildServer(config);
-    const close = await app.inject({
-      method: 'POST',
-      url: '/v1/admin/markets/mkt_riksbank_2026/close-for-resolution',
-      headers: { 'x-kynorix-admin': 'officer-livia' },
-      payload: {},
-    });
-    expect(close.json().data.status).toBe('resolution_pending');
-    const proposal = await app.inject({
-      method: 'POST',
-      url: '/v1/admin/markets/mkt_riksbank_2026/resolutions',
-      headers: { 'x-kynorix-admin': 'officer-livia' },
-      payload: {
-        outcomeRef: 'mkt_riksbank_2026_yes',
-        reason: 'Official sandbox evidence supports the selected outcome.',
-        evidence: [
-          {
-            source: 'https://www.riksbank.se/',
-            capturedAt: new Date().toISOString(),
-            contentHash: 'a'.repeat(64),
-            notes: 'Evidence captured and retained for independent sandbox review.',
-          },
-        ],
-      },
-    });
-    expect(proposal.statusCode).toBe(201);
-    const proposalRef = proposal.json().data.proposalRef as string;
-    const sameOfficer = await app.inject({
-      method: 'POST',
-      url: `/v1/admin/resolutions/${proposalRef}/approve`,
-      headers: { 'x-kynorix-admin': 'officer-livia' },
-      payload: {},
-    });
-    expect(sameOfficer.statusCode).toBe(400);
-    const independentOfficer = await app.inject({
-      method: 'POST',
-      url: `/v1/admin/resolutions/${proposalRef}/approve`,
-      headers: { 'x-kynorix-admin': 'officer-noah' },
-      payload: {},
-    });
-    expect(independentOfficer.statusCode).toBe(200);
-    expect(independentOfficer.json().data.market.status).toBe('settled');
-    await app.close();
+    expect(config.environment).toBe('test');
+    expect(config.tenantRef).toBe('tenant_test');
   });
 });

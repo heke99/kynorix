@@ -1,113 +1,137 @@
 'use client';
 
 import type { Market } from '@kynorix/contracts';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { kynorixApi } from '../lib/api';
 import { MarketCard } from './MarketCard';
 
-export function MarketExplorer() {
+export function MarketExplorer({
+  initialCategory = '',
+  initialQuery = '',
+}: {
+  initialCategory?: string;
+  initialQuery?: string;
+}) {
   const [markets, setMarkets] = useState<Market[]>([]);
+  const [categories, setCategories] = useState<Array<{ categoryRef: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('Alla');
+  const [query, setQuery] = useState(initialQuery);
+  const [category, setCategory] = useState(initialCategory);
+  const [sort, setSort] = useState('trending');
+  const [cursor, setCursor] = useState<string | null>(null);
+
+  const load = useCallback(
+    async (append = false) => {
+      append ? setLoadingMore(true) : setLoading(true);
+      setError('');
+      try {
+        const filters: {
+          query?: string;
+          category?: string;
+          sort?: string;
+          cursor?: string;
+          limit?: number;
+        } = { sort, limit: 24 };
+        if (query) filters.query = query;
+        if (category) filters.category = category;
+        if (append && cursor) filters.cursor = cursor;
+        const result = await kynorixApi.markets(filters);
+        setMarkets((current) => (append ? [...current, ...result.items] : result.items));
+        setCursor(result.nextCursor);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Markets could not be loaded.');
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [category, cursor, query, sort],
+  );
 
   useEffect(() => {
     void kynorixApi
-      .markets()
-      .then(setMarkets)
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : 'Marknaderna kunde inte hämtas'),
-      )
-      .finally(() => setLoading(false));
+      .categories()
+      .then(setCategories)
+      .catch(() => setCategories([]));
   }, []);
-
-  const categories = useMemo(
-    () => ['Alla', ...new Set(markets.map((market) => market.category))],
-    [markets],
-  );
-  const filtered = markets.filter((market) => {
-    const matchesCategory = category === 'Alla' || market.category === category;
-    const haystack = `${market.title} ${market.question}`.toLowerCase();
-    return matchesCategory && haystack.includes(query.toLowerCase());
-  });
+  useEffect(() => {
+    const timer = setTimeout(() => void load(false), 250);
+    return () => clearTimeout(timer);
+  }, [category, query, sort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <>
-      <section className="hero">
-        <div className="hero-copy">
-          <span className="kicker">Kollektiv intelligens, mätbara utfall</span>
-          <h1>Se vad marknaden tror händer härnäst.</h1>
-          <p>
-            Handla med virtuella medel på tydligt definierade händelser. Varje marknad har öppna
-            regler, källa och granskningsbar resolution.
-          </p>
-          <div className="hero-proof">
-            <span>
-              <b>100 %</b> virtuellt kapital
-            </span>
-            <span>
-              <b>2-personers</b> resolution
-            </span>
-            <span>
-              <b>0</b> riktiga insättningar
-            </span>
-          </div>
+    <section className="market-section catalogue">
+      <div className="section-heading catalogue-heading">
+        <div>
+          <span className="kicker">Live markets</span>
+          <h1>What will happen next?</h1>
         </div>
-        <div className="signal-card" aria-label="Kynorix sandbox status">
-          <div className="signal-orbit">
-            <div className="signal-core">K</div>
-          </div>
-          <div>
-            <span className="eyebrow">Systemstatus</span>
-            <strong>Sandbox är aktiv</strong>
-            <p>Real-money och korttidsprodukter är spärrade i serverpolicyn.</p>
-          </div>
-        </div>
-      </section>
-
-      <section className="market-section">
-        <div className="section-heading">
-          <div>
-            <span className="kicker">Live i sandbox</span>
-            <h2>Utforska marknader</h2>
-          </div>
-          <label className="search">
-            <span className="sr-only">Sök marknader</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Sök händelse eller ämne"
-            />
-          </label>
-        </div>
+        <label className="search">
+          <span className="sr-only">Search markets</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search markets"
+          />
+        </label>
+      </div>
+      <div className="catalogue-controls">
         <div className="category-row">
-          {categories.map((value) => (
+          <button
+            className={!category ? 'category-button active' : 'category-button'}
+            onClick={() => setCategory('')}
+          >
+            All
+          </button>
+          {categories.map((item) => (
             <button
-              key={value}
-              className={value === category ? 'category-button active' : 'category-button'}
-              onClick={() => setCategory(value)}
-              type="button"
+              key={item.categoryRef}
+              className={
+                item.categoryRef === category ? 'category-button active' : 'category-button'
+              }
+              onClick={() => setCategory(item.categoryRef)}
             >
-              {value}
+              {item.name}
             </button>
           ))}
         </div>
-        {loading && <div className="state-card">Hämtar marknader…</div>}
-        {error && (
-          <div className="state-card error">
-            <strong>API:t går inte att nå.</strong>
-            <span>{error}. Starta projektet med npm run dev.</span>
-          </div>
-        )}
-        {!loading && !error && (
+        <label className="sort-control">
+          <span>Sort</span>
+          <select value={sort} onChange={(event) => setSort(event.target.value)}>
+            <option value="trending">Trending</option>
+            <option value="volume">Volume</option>
+            <option value="liquidity">Liquidity</option>
+            <option value="newest">Newest</option>
+            <option value="ending_soon">Ending soon</option>
+          </select>
+        </label>
+      </div>
+      {loading && <div className="state-card">Loading live markets…</div>}
+      {error && (
+        <div className="state-card error">
+          <strong>Markets unavailable</strong>
+          <span>{error}</span>
+        </div>
+      )}
+      {!loading && !error && markets.length === 0 && (
+        <div className="state-card">No markets match these filters.</div>
+      )}
+      {!loading && !error && (
+        <>
           <div className="market-grid">
-            {filtered.map((market) => (
+            {markets.map((market) => (
               <MarketCard key={market.marketRef} market={market} />
             ))}
           </div>
-        )}
-      </section>
-    </>
+          {cursor && (
+            <button className="load-more" disabled={loadingMore} onClick={() => void load(true)}>
+              {loadingMore ? 'Loading…' : 'Load more markets'}
+            </button>
+          )}
+        </>
+      )}
+    </section>
   );
 }

@@ -508,3 +508,40 @@ h1 {
     display: none;
   }
 }
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: auto;
+  background: rgba(2, 7, 6, 0.82);
+  backdrop-filter: blur(8px);
+}
+.create-panel {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+.create-panel label {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0;
+  color: #8da099;
+  font-size: 12px;
+}
+.create-panel input,
+.create-panel textarea {
+  width: 100%;
+  border: 1px solid #263934;
+  border-radius: 8px;
+  padding: 11px;
+  color: #edf5f2;
+  background: #0a1412;
+}
+.create-panel textarea {
+  min-height: 120px;
+  resize: vertical;
+}

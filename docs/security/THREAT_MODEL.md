@@ -6,7 +6,7 @@
 2. Customer identity, KYC and account recovery
 3. Order-book ordering and private order information
 4. Resolution evidence and approval independence
-5. Custody keys and withdrawal policy (future gated capability)
+5. Custody keys and withdrawal policy
 6. Tenant isolation and administrative authority
 
 ## Trust boundaries and controls
@@ -21,15 +21,18 @@
 | Service → data          | cross-tenant read/write                | RLS, separate credentials, integration tests                         |
 | Deployment → production | supply-chain compromise                | pinned dependencies, SBOM, signed image/digest, protected promotion  |
 
-## Abuse cases tested in this release
+## Required abuse and integration cases
 
 - Reusing an idempotency key with changed content
 - Crossing an order with the same user
 - Posting an unbalanced journal
 - Driving a market through an illegal state transition
-- Enabling a blocked product through environment flags
-- Accessing protected endpoints without a sandbox identity header
+- Attempting a blocked product despite jurisdiction policy
+- Accessing protected endpoints without a verified OIDC token
+- Reusing a revoked web session
+- Replaying a payment webhook
+- Confirming a withdrawal without current-session MFA
 
-The demo header authentication is not a production identity mechanism. It makes
-the sandbox boundary visible and must be replaced by an approved OIDC/passkey
-provider before any external pilot with personal data.
+Identity is derived only from a verified token. Cookie sessions are checked for
+expiry and revocation. Staff roles, permissions, approval separation, and
+current-session MFA are enforced by the API.

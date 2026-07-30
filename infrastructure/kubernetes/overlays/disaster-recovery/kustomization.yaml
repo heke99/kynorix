@@ -1,0 +1,7 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources: [../../base]
+namespace: kynorix-disaster-recovery
+nameSuffix: -disaster-recovery
+labels:
+  - pairs: { kynorix.io/environment: disaster-recovery }

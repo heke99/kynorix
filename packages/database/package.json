@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "migrate": "tsx src/migrate.ts",
+    "bootstrap": "tsx src/bootstrap.ts",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit"

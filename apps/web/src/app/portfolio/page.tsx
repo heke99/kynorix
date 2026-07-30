@@ -1,84 +1,85 @@
 'use client';
 
-import type { Balance, Order, Position } from '@kynorix/contracts';
+import type { Position } from '@kynorix/contracts';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { formatAtoms, kynorixApi } from '../../lib/api';
 
 export default function PortfolioPage() {
-  const [balances, setBalances] = useState<Balance[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
   const [error, setError] = useState('');
-
   useEffect(() => {
-    void Promise.all([kynorixApi.balances(), kynorixApi.positions(), kynorixApi.orders()])
-      .then(([nextBalances, nextPositions, nextOrders]) => {
-        setBalances(nextBalances);
-        setPositions(nextPositions);
-        setOrders(nextOrders);
-      })
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : 'Kunde inte hämta data'),
-      );
+    void kynorixApi
+      .positions()
+      .then(setPositions)
+      .catch((cause: unknown) => {
+        const value = cause as Error & { status?: number };
+        if (value.status === 401) window.location.assign(kynorixApi.loginUrl('/portfolio'));
+        else setError(value.message);
+      });
   }, []);
-
+  const unrealized = positions.reduce((sum, value) => sum + BigInt(value.unrealizedPnlAtoms), 0n);
+  const realized = positions.reduce((sum, value) => sum + BigInt(value.realizedPnlAtoms), 0n);
+  const asset = 'USD';
   return (
     <div className="portfolio-page">
       <div className="page-heading">
-        <span className="kicker">Demoidentitet · Alex</span>
-        <h1>Portfölj</h1>
-        <p>Alla belopp och positioner är virtuella och saknar kontantvärde.</p>
+        <span className="kicker">Positions and performance</span>
+        <h1>Portfolio</h1>
+        <p>Values are calculated from confirmed positions and the latest stored market price.</p>
       </div>
       {error && <div className="state-card error">{error}</div>}
       <div className="summary-grid">
         <article>
-          <span>Tillgängligt</span>
-          <strong>{formatAtoms(balances[0]?.availableAtoms ?? '0')}</strong>
+          <span>Active positions</span>
+          <strong>{positions.filter((value) => value.marketStatus === 'open').length}</strong>
         </article>
         <article>
-          <span>Låst i order</span>
-          <strong>{formatAtoms(balances[0]?.lockedAtoms ?? '0')}</strong>
+          <span>Unrealized P&amp;L</span>
+          <strong>{formatAtoms(unrealized.toString(), asset)}</strong>
         </article>
         <article>
-          <span>Aktiva positioner</span>
-          <strong>{positions.length}</strong>
+          <span>Realized P&amp;L</span>
+          <strong>{formatAtoms(realized.toString(), asset)}</strong>
         </article>
         <article>
-          <span>Öppna order</span>
-          <strong>
-            {
-              orders.filter(
-                (order) => order.status === 'open' || order.status === 'partially_filled',
-              ).length
-            }
-          </strong>
+          <span>Markets</span>
+          <strong>{new Set(positions.map((value) => value.marketRef)).size}</strong>
         </article>
       </div>
       <section className="table-card">
         <div className="card-heading">
-          <h2>Positioner</h2>
-          <span>Återskapningsbara från fills</span>
+          <h2>Positions</h2>
+          <span>Ledger-backed</span>
         </div>
         <div className="responsive-table">
           <div className="table-row table-head">
-            <span>Marknad</span>
-            <span>Utfall</span>
-            <span>Tillgängligt</span>
-            <span>Låst</span>
-            <span>Snittpris</span>
-            <span>Avgifter</span>
+            <span>Market</span>
+            <span>Outcome</span>
+            <span>Quantity</span>
+            <span>Entry</span>
+            <span>Current</span>
+            <span>P&amp;L</span>
           </div>
           {positions.map((position) => (
-            <div className="table-row" key={`${position.marketRef}:${position.outcomeRef}`}>
-              <span>{position.marketRef}</span>
-              <span>{position.outcomeRef.endsWith('yes') ? 'JA' : 'NEJ'}</span>
-              <span>{position.availableQuantity}</span>
-              <span>{position.lockedQuantity}</span>
-              <span>{position.averageEntryPriceAtoms}%</span>
-              <span>{formatAtoms(position.feesPaidAtoms)}</span>
-            </div>
+            <Link
+              className="table-row"
+              href={`/markets/${position.marketRef}`}
+              key={`${position.marketRef}:${position.outcomeRef}`}
+            >
+              <span>{position.marketTitle}</span>
+              <span>{position.outcomeLabel}</span>
+              <span>
+                {position.availableQuantity} + {position.lockedQuantity} locked
+              </span>
+              <span>{position.averageEntryPriceAtoms}</span>
+              <span>{position.currentPriceAtoms ?? '—'}</span>
+              <span>{formatAtoms(position.unrealizedPnlAtoms, asset)}</span>
+            </Link>
           ))}
-          {positions.length === 0 && <div className="empty-row">Du har inga positioner ännu.</div>}
+          {positions.length === 0 && (
+            <div className="empty-row">You do not have any positions yet.</div>
+          )}
         </div>
       </section>
     </div>

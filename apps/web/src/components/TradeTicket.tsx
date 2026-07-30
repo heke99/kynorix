@@ -1,6 +1,7 @@
 'use client';
 
-import type { Market, OrderSide, Outcome } from '@kynorix/contracts';
+import type { FeeQuote, Market, OrderSide, Outcome, TimeInForce } from '@kynorix/contracts';
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { formatAtoms, kynorixApi } from '../lib/api';
 
@@ -20,14 +21,47 @@ export function TradeTicket({
   const [side, setSide] = useState<OrderSide>('buy');
   const [price, setPrice] = useState(suggestedPrice ?? '50');
   const [quantity, setQuantity] = useState('10');
+  const [timeInForce, setTimeInForce] = useState<TimeInForce>('GTC');
+  const [postOnly, setPostOnly] = useState(false);
+  const [slippage, setSlippage] = useState(100);
+  const [quote, setQuote] = useState<FeeQuote>();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const total = useMemo(
-    () => (Number(price || 0) * Number(quantity || 0)).toString(),
+  const orderValue = useMemo(
+    () => (BigInt(price || '0') * BigInt(quantity || '0')).toString(),
     [price, quantity],
   );
 
-  async function submit() {
+  function resetQuote() {
+    setQuote(undefined);
+    setMessage('');
+  }
+
+  async function review() {
+    setBusy(true);
+    setMessage('');
+    try {
+      setQuote(
+        await kynorixApi.quoteOrder({
+          marketRef: market.marketRef,
+          outcomeRef: selectedOutcome.outcomeRef,
+          side,
+          priceAtoms: price,
+          quantity,
+          timeInForce,
+          postOnly,
+          maximumSlippageBasisPoints: slippage,
+        }),
+      );
+    } catch (cause) {
+      handleError(cause, market.marketRef, setMessage);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirm() {
+    if (!quote) return;
     setBusy(true);
     setMessage('');
     try {
@@ -38,16 +72,17 @@ export function TradeTicket({
         type: 'limit',
         priceAtoms: price,
         quantity,
-        timeInForce: 'GTC',
-        postOnly: false,
+        timeInForce,
+        postOnly,
+        maximumSlippageBasisPoints: slippage,
+        quoteRef: quote.quoteRef,
         idempotencyKey: crypto.randomUUID(),
       });
-      setMessage(
-        `Order ${order.status === 'filled' ? 'fylld' : 'mottagen'} · ${order.orderRef.slice(0, 14)}…`,
-      );
+      setMessage(`Order ${order.status.replaceAll('_', ' ')} · ${order.orderRef}`);
+      setQuote(undefined);
       onPlaced();
     } catch (cause) {
-      setMessage(cause instanceof Error ? cause.message : 'Ordern kunde inte skickas');
+      handleError(cause, market.marketRef, setMessage);
     } finally {
       setBusy(false);
     }
@@ -56,11 +91,23 @@ export function TradeTicket({
   return (
     <aside className="trade-ticket">
       <div className="ticket-tabs">
-        <button className={side === 'buy' ? 'active' : ''} onClick={() => setSide('buy')}>
-          Köp
+        <button
+          className={side === 'buy' ? 'active' : ''}
+          onClick={() => {
+            setSide('buy');
+            resetQuote();
+          }}
+        >
+          Buy
         </button>
-        <button className={side === 'sell' ? 'active' : ''} onClick={() => setSide('sell')}>
-          Sälj
+        <button
+          className={side === 'sell' ? 'active' : ''}
+          onClick={() => {
+            setSide('sell');
+            resetQuote();
+          }}
+        >
+          Sell
         </button>
       </div>
       <div className="outcome-selector">
@@ -68,48 +115,140 @@ export function TradeTicket({
           <button
             key={outcome.outcomeRef}
             className={outcome.outcomeRef === selectedOutcome.outcomeRef ? 'active' : ''}
-            onClick={() => onOutcomeChange(outcome)}
+            onClick={() => {
+              onOutcomeChange(outcome);
+              resetQuote();
+            }}
           >
             {outcome.label}
           </button>
         ))}
       </div>
       <label>
-        Pris / sannolikhet
+        Limit price
         <div className="input-suffix">
           <input
             inputMode="numeric"
             min="1"
-            max="99"
-            step="1"
             value={price}
-            onChange={(event) => setPrice(event.target.value.replace(/\D/g, '').slice(0, 2))}
+            onChange={(event) => {
+              setPrice(event.target.value.replace(/\D/g, ''));
+              resetQuote();
+            }}
           />
-          <span>%</span>
+          <span>atoms</span>
         </div>
       </label>
       <label>
-        Antal kontrakt
+        Quantity
         <input
           inputMode="numeric"
           min="1"
           value={quantity}
-          onChange={(event) => setQuantity(event.target.value.replace(/\D/g, ''))}
+          onChange={(event) => {
+            setQuantity(event.target.value.replace(/\D/g, ''));
+            resetQuote();
+          }}
         />
       </label>
-      <div className="ticket-summary">
-        <span>Ordervärde</span>
-        <strong>{formatAtoms(total)}</strong>
-        <span>Maximal utbetalning</span>
-        <strong>{formatAtoms((Number(quantity || 0) * 100).toString())}</strong>
-        <span>Avgift</span>
-        <strong>visas i fill</strong>
+      <div className="ticket-options">
+        <label>
+          Time in force
+          <select
+            value={timeInForce}
+            onChange={(event) => {
+              setTimeInForce(event.target.value as TimeInForce);
+              resetQuote();
+            }}
+          >
+            <option value="GTC">Good until cancelled</option>
+            <option value="IOC">Immediate or cancel</option>
+            <option value="FOK">Fill or kill</option>
+          </select>
+        </label>
+        <label className="check-option">
+          <input
+            type="checkbox"
+            checked={postOnly}
+            onChange={(event) => {
+              setPostOnly(event.target.checked);
+              resetQuote();
+            }}
+          />
+          Post only
+        </label>
+        <label>
+          Maximum slippage
+          <select
+            value={slippage}
+            onChange={(event) => {
+              setSlippage(Number(event.target.value));
+              resetQuote();
+            }}
+          >
+            <option value="25">0.25%</option>
+            <option value="50">0.50%</option>
+            <option value="100">1.00%</option>
+            <option value="200">2.00%</option>
+          </select>
+        </label>
       </div>
-      <button className="primary-button" disabled={busy || !price || !quantity} onClick={submit}>
-        {busy ? 'Skickar…' : `${side === 'buy' ? 'Köp' : 'Sälj'} ${selectedOutcome.label}`}
-      </button>
-      <p className="sandbox-note">Virtuella medel · inget kontantvärde · sandbox</p>
-      {message && <div className="ticket-message">{message}</div>}
+      <div className="ticket-summary">
+        <span>Estimated order value</span>
+        <strong>{formatAtoms(orderValue, market.collateralAsset, market.assetDecimals)}</strong>
+        <span>Authoritative fee</span>
+        <strong>
+          {quote
+            ? formatAtoms(quote.feeAtoms, quote.asset, market.assetDecimals)
+            : 'Review required'}
+        </strong>
+        <span>Total debit</span>
+        <strong>
+          {quote ? formatAtoms(quote.totalDebitAtoms, quote.asset, market.assetDecimals) : '—'}
+        </strong>
+        <span>Possible payout</span>
+        <strong>
+          {quote ? formatAtoms(quote.potentialPayoutAtoms, quote.asset, market.assetDecimals) : '—'}
+        </strong>
+        <span>Profit if correct</span>
+        <strong>
+          {quote ? formatAtoms(quote.potentialProfitAtoms, quote.asset, market.assetDecimals) : '—'}
+        </strong>
+      </div>
+      {!quote ? (
+        <button
+          className="primary-button"
+          disabled={busy || !price || !quantity}
+          onClick={() => void review()}
+        >
+          {busy ? 'Calculating…' : 'Review order'}
+        </button>
+      ) : (
+        <div className="confirm-actions">
+          <button className="secondary-button" disabled={busy} onClick={resetQuote}>
+            Edit
+          </button>
+          <button className="primary-button" disabled={busy} onClick={() => void confirm()}>
+            {busy ? 'Submitting…' : `Confirm ${side}`}
+          </button>
+        </div>
+      )}
+      {message && (
+        <div className="ticket-message">
+          {message}
+          {message.includes('balance') && <Link href="/wallet/deposit">Deposit funds</Link>}
+          {message.includes('verification') && <Link href="/verification">Verify identity</Link>}
+        </div>
+      )}
     </aside>
   );
+}
+
+function handleError(cause: unknown, marketRef: string, setMessage: (value: string) => void) {
+  const error = cause as Error & { status?: number };
+  if (error.status === 401) {
+    window.location.assign(kynorixApi.loginUrl(`/markets/${marketRef}`));
+    return;
+  }
+  setMessage(error.message || 'The order could not be processed.');
 }

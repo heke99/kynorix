@@ -1,10 +1,20 @@
 'use client';
 
-import type { Market, Order, Outcome, Trade } from '@kynorix/contracts';
+import type {
+  Market,
+  MarketHistoryPoint,
+  Order,
+  Outcome,
+  Position,
+  Trade,
+} from '@kynorix/contracts';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { PriceChart } from '../../../components/PriceChart';
 import { TradeTicket } from '../../../components/TradeTicket';
-import { formatAtoms, formatProbability, kynorixApi } from '../../../lib/api';
+import { formatAtoms, formatDate, formatProbability, kynorixApi } from '../../../lib/api';
+
+type Range = '1H' | '6H' | '1D' | '1W' | '1M' | 'ALL';
 
 export default function MarketPage() {
   const { marketRef } = useParams<{ marketRef: string }>();
@@ -12,46 +22,48 @@ export default function MarketPage() {
   const [outcome, setOutcome] = useState<Outcome>();
   const [book, setBook] = useState<Awaited<ReturnType<typeof kynorixApi.orderbook>>>();
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [history, setHistory] = useState<MarketHistoryPoint[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [position, setPosition] = useState<Position>();
+  const [range, setRange] = useState<Range>('1D');
   const [error, setError] = useState('');
 
   const refresh = useCallback(async () => {
     const loadedMarket = market ?? (await kynorixApi.market(marketRef));
     const selected = outcome ?? loadedMarket.outcomes[0]!;
-    const [nextBook, nextTrades, nextOrders] = await Promise.all([
+    const [nextBook, nextTrades, nextHistory] = await Promise.all([
       kynorixApi.orderbook(marketRef, selected.outcomeRef),
       kynorixApi.trades(marketRef),
-      kynorixApi.orders(),
+      kynorixApi.history(marketRef, selected.outcomeRef, range),
+    ]);
+    const [nextOrders, nextPositions] = await Promise.all([
+      kynorixApi.orders().catch(() => []),
+      kynorixApi.positions().catch(() => []),
     ]);
     setMarket(loadedMarket);
     setOutcome(selected);
     setBook(nextBook);
     setTrades(nextTrades);
+    setHistory(nextHistory);
     setOrders(nextOrders.filter((order) => order.marketRef === marketRef));
-  }, [market, marketRef, outcome]);
+    setPosition(
+      nextPositions.find(
+        (value) => value.marketRef === marketRef && value.outcomeRef === selected.outcomeRef,
+      ),
+    );
+  }, [market, marketRef, outcome, range]);
 
   useEffect(() => {
     void refresh().catch((cause: unknown) =>
-      setError(cause instanceof Error ? cause.message : 'Marknaden kunde inte hämtas'),
+      setError(cause instanceof Error ? cause.message : 'Market could not be loaded.'),
     );
   }, [refresh]);
 
-  useEffect(() => {
-    if (!market || !outcome) return;
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const base = new URL(process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000');
-    const channel = `market.${market.marketRef}.book`;
-    const socket = new WebSocket(
-      `${protocol}//${base.host}/v1/ws?channels=${encodeURIComponent(channel)}`,
-    );
-    socket.onmessage = () => void refresh();
-    return () => socket.close();
-  }, [market, outcome, refresh]);
-
   if (error) return <div className="state-card error standalone">{error}</div>;
-  if (!market || !outcome) return <div className="state-card standalone">Hämtar marknaden…</div>;
+  if (!market || !outcome) return <div className="state-card standalone">Loading market…</div>;
 
-  const bestAsk = book?.asks[0]?.priceAtoms;
+  const bestAsk = book?.asks[0]?.priceAtoms ?? outcome.lastPriceAtoms ?? undefined;
+  const live = market.status === 'open' && !market.tradingSuspended;
   return (
     <div className="market-layout">
       <section className="market-main">
@@ -61,155 +73,171 @@ export default function MarketPage() {
           <p>{market.question}</p>
           <div className="market-meta">
             <span>
-              <b>{formatProbability(bestAsk)}</b> JA-pris
+              <b>{formatProbability(bestAsk)}</b> {outcome.label}
             </span>
-            <span>Stänger {new Date(market.closesAt).toLocaleDateString('sv-SE')}</span>
-            <span>{market.status === 'open' ? 'Handel öppen' : market.status}</span>
+            <span>Closes {formatDate(market.closesAt)}</span>
+            <span>{live ? 'Trading open' : market.status.replaceAll('_', ' ')}</span>
           </div>
         </div>
         <div className="chart-card">
           <div className="chart-header">
             <div>
-              <span className="eyebrow">Indikativ sannolikhet</span>
+              <span className="eyebrow">Confirmed price</span>
               <strong>{formatProbability(bestAsk)}</strong>
             </div>
-            <span className="live-indicator">
-              <span className="status-dot" /> Live orderbok
-            </span>
+            <div className="range-row">
+              {(['1H', '6H', '1D', '1W', '1M', 'ALL'] as Range[]).map((value) => (
+                <button
+                  className={range === value ? 'active' : ''}
+                  key={value}
+                  onClick={() => setRange(value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="mock-chart" aria-label="Indikativ prisgraf">
-            <svg viewBox="0 0 800 260" preserveAspectRatio="none" role="img">
-              <defs>
-                <linearGradient id="fill" x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor="#65f5c7" stopOpacity=".32" />
-                  <stop offset="100%" stopColor="#65f5c7" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path
-                className="chart-fill"
-                d="M0 210 C80 190,105 160,180 175 S300 118,360 135 S455 82,520 100 S655 58,800 48 L800 260 L0 260 Z"
-              />
-              <path
-                className="chart-line"
-                d="M0 210 C80 190,105 160,180 175 S300 118,360 135 S455 82,520 100 S655 58,800 48"
-              />
-            </svg>
+          <div className="history-chart">
+            <PriceChart points={history} />
           </div>
         </div>
-
         <div className="market-data-grid">
           <section className="data-card">
             <div className="card-heading">
-              <h2>Orderbok · {outcome.label}</h2>
-              <span>Sekvens {book?.sequence ?? '—'}</span>
+              <h2>Order book · {outcome.label}</h2>
+              <span>Sequence {book?.sequence ?? '—'}</span>
             </div>
             <div className="book-columns">
-              <div>
-                <div className="book-header">
-                  <span>Köp</span>
-                  <span>Antal</span>
-                </div>
-                {book?.bids.slice(0, 7).map((level) => (
-                  <div className="book-row bid" key={level.priceAtoms}>
-                    <span>{level.priceAtoms}%</span>
-                    <span>{level.quantity}</span>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <div className="book-header">
-                  <span>Sälj</span>
-                  <span>Antal</span>
-                </div>
-                {book?.asks.slice(0, 7).map((level) => (
-                  <div className="book-row ask" key={level.priceAtoms}>
-                    <span>{level.priceAtoms}%</span>
-                    <span>{level.quantity}</span>
-                  </div>
-                ))}
-              </div>
+              <BookSide title="Bids" levels={book?.bids ?? []} kind="bid" />
+              <BookSide title="Asks" levels={book?.asks ?? []} kind="ask" />
             </div>
           </section>
           <section className="data-card">
             <div className="card-heading">
-              <h2>Senaste avslut</h2>
-              <span>Virtuell VSEK</span>
+              <h2>Recent trades</h2>
+              <span>{market.collateralAsset}</span>
             </div>
             <div className="trade-list">
-              {trades.length === 0 && <p className="muted">Inga avslut ännu.</p>}
-              {trades.slice(0, 8).map((trade) => (
+              {trades.length === 0 && <p className="muted">No trades yet.</p>}
+              {trades.slice(0, 10).map((trade) => (
                 <div className="trade-row" key={trade.tradeRef}>
-                  <span>{trade.outcomeRef.endsWith('yes') ? 'JA' : 'NEJ'}</span>
-                  <strong>{trade.priceAtoms}%</strong>
-                  <span>{trade.quantity} st</span>
-                  <span>{new Date(trade.executedAt).toLocaleTimeString('sv-SE')}</span>
+                  <span>
+                    {market.outcomes.find((value) => value.outcomeRef === trade.outcomeRef)?.label}
+                  </span>
+                  <strong>{trade.priceAtoms}</strong>
+                  <span>{trade.quantity}</span>
+                  <span>
+                    {new Date(trade.executedAt).toLocaleTimeString('en-US', { timeZone: 'UTC' })}
+                  </span>
                 </div>
               ))}
             </div>
           </section>
         </div>
-
         <section className="rules-card">
-          <span className="kicker">Resolution och bevis</span>
-          <h2>Regler</h2>
+          <span className="kicker">Resolution and evidence</span>
+          <h2>Market rules</h2>
           <p>{market.rules}</p>
           <a href={market.resolutionSource} target="_blank" rel="noreferrer">
-            Öppna primär källa ↗
+            Open primary source ↗
           </a>
           <dl>
             <div>
-              <dt>Regelversion</dt>
+              <dt>Rule version</dt>
               <dd>{market.immutableRuleVersion}</dd>
             </div>
             <div>
-              <dt>Tidszon</dt>
+              <dt>Timezone</dt>
               <dd>{market.displayTimezone}</dd>
             </div>
             <div>
-              <dt>Collateral</dt>
-              <dd>{market.collateralAsset}</dd>
+              <dt>Expected resolution</dt>
+              <dd>{formatDate(market.resolutionTime)}</dd>
             </div>
           </dl>
         </section>
       </section>
       <div className="market-side">
-        <TradeTicket
-          market={market}
-          selectedOutcome={outcome}
-          onOutcomeChange={(next) => {
-            setOutcome(next);
-            setBook(undefined);
-          }}
-          suggestedPrice={bestAsk}
-          onPlaced={() => void refresh()}
-        />
+        {live ? (
+          <TradeTicket
+            market={market}
+            selectedOutcome={outcome}
+            onOutcomeChange={(next) => {
+              setOutcome(next);
+              setBook(undefined);
+            }}
+            suggestedPrice={bestAsk}
+            onPlaced={() => void refresh()}
+          />
+        ) : (
+          <section className="compact-card">
+            <h3>Trading unavailable</h3>
+            <p>This market is currently {market.status.replaceAll('_', ' ')}.</p>
+          </section>
+        )}
         <section className="compact-card">
-          <h3>Dina order</h3>
-          {orders.length === 0 && <p className="muted">Inga order på marknaden.</p>}
-          {orders.slice(0, 4).map((order) => (
+          <h3>Your position</h3>
+          {position ? (
+            <p>
+              {position.availableQuantity} {position.outcomeLabel} ·{' '}
+              {formatAtoms(
+                position.positionValueAtoms,
+                market.collateralAsset,
+                market.assetDecimals,
+              )}
+            </p>
+          ) : (
+            <p className="muted">No position in this outcome.</p>
+          )}
+          <h3>Your orders</h3>
+          {orders.length === 0 && <p className="muted">No orders in this market.</p>}
+          {orders.slice(0, 6).map((order) => (
             <div className="compact-order" key={order.orderRef}>
               <div>
                 <b>
-                  {order.side === 'buy' ? 'Köp' : 'Sälj'}{' '}
-                  {order.outcomeRef.endsWith('yes') ? 'JA' : 'NEJ'}
+                  {order.side}{' '}
+                  {market.outcomes.find((value) => value.outcomeRef === order.outcomeRef)?.label}
                 </b>
-                <span>{order.status}</span>
+                <span>{order.status.replaceAll('_', ' ')}</span>
               </div>
               <strong>
-                {order.remainingQuantity}/{order.quantity} · {order.priceAtoms}%
+                {order.remainingQuantity}/{order.quantity} · {order.priceAtoms}
               </strong>
               {(order.status === 'open' || order.status === 'partially_filled') && (
                 <button onClick={() => void kynorixApi.cancelOrder(order.orderRef).then(refresh)}>
-                  Avbryt
+                  Cancel
                 </button>
               )}
             </div>
           ))}
-          <div className="balance-hint">
-            Demoidentitet: Alex · {formatAtoms('1000000')} startkapital
-          </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+function BookSide({
+  title,
+  levels,
+  kind,
+}: {
+  title: string;
+  levels: Array<{ priceAtoms: string; quantity: string }>;
+  kind: 'bid' | 'ask';
+}) {
+  return (
+    <div>
+      <div className="book-header">
+        <span>{title}</span>
+        <span>Quantity</span>
+      </div>
+      {levels.slice(0, 10).map((level) => (
+        <div className={`book-row ${kind}`} key={level.priceAtoms}>
+          <span>{level.priceAtoms}</span>
+          <span>{level.quantity}</span>
+        </div>
+      ))}
+      {levels.length === 0 && <p className="muted">No open orders.</p>}
     </div>
   );
 }

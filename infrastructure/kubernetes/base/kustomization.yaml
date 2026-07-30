@@ -3,4 +3,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - api.yaml
+  - worker.yaml
+  - migration-job.yaml
+  - disruption-budgets.yaml
   - network-policy.yaml

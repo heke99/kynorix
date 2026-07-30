@@ -106,7 +106,7 @@ button {
   align-items: center;
   gap: 16px;
 }
-.sandbox-pill {
+.environment-pill {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -499,13 +499,13 @@ button {
   color: var(--muted);
   font-size: 11px;
 }
-.mock-chart {
+.history-chart {
   height: 250px;
   padding-top: 10px;
   background-image: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
   background-size: 100% 52px;
 }
-.mock-chart svg {
+.history-chart svg {
   width: 100%;
   height: 100%;
 }
@@ -516,7 +516,7 @@ button {
   vector-effect: non-scaling-stroke;
 }
 .chart-fill {
-  fill: url(#fill);
+  fill: url(#history-fill);
 }
 .market-data-grid {
   display: grid;
@@ -718,7 +718,7 @@ button {
   opacity: 0.45;
   cursor: not-allowed;
 }
-.sandbox-note {
+.disclosure-note {
   text-align: center;
   color: var(--muted);
   font-size: 10px;
@@ -874,7 +874,7 @@ footer {
   .app-header nav {
     display: none;
   }
-  .sandbox-pill {
+  .environment-pill {
     display: none;
   }
   .hero {
@@ -920,5 +920,188 @@ footer {
     flex-direction: column;
     align-items: flex-start;
     padding-left: 16px;
+  }
+}
+
+.catalogue {
+  padding-top: 42px;
+}
+.catalogue-heading h1,
+.page-heading h1,
+.info-page h1,
+.form-page h1,
+.auth-page h1 {
+  margin: 4px 0 0;
+}
+.catalogue-controls,
+.wallet-actions,
+.confirm-actions,
+.settings-grid {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.catalogue-controls {
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+.sort-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+select,
+textarea {
+  color: var(--text);
+  background: #0b1513;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px;
+}
+.card-chart {
+  height: 48px;
+  margin: 12px 0;
+}
+.card-chart svg {
+  width: 100%;
+  height: 100%;
+}
+.card-chart path {
+  stroke: var(--mint);
+  stroke-width: 2;
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+.chart-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--muted);
+  font-size: 11px;
+}
+.chart-empty.large {
+  min-height: 250px;
+}
+.outcome-prices,
+.market-stats,
+.range-row,
+.ticket-options {
+  display: flex;
+  gap: 8px;
+}
+.market-stats {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.market-stats b {
+  display: block;
+  margin-top: 3px;
+  color: var(--text);
+}
+.range-row button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 7px 8px;
+  border-radius: 7px;
+}
+.range-row button.active {
+  color: var(--mint);
+  background: rgba(101, 245, 199, 0.09);
+}
+.ticket-options {
+  flex-direction: column;
+}
+.check-option {
+  flex-direction: row !important;
+  align-items: center;
+}
+.confirm-actions > * {
+  flex: 1;
+}
+.secondary-button,
+.login-link,
+.balance-link,
+.load-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  color: var(--text);
+  background: transparent;
+  border-radius: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+}
+.primary-button.compact {
+  width: auto;
+  padding: 10px 16px;
+}
+.balance-link {
+  color: var(--mint);
+}
+.load-more {
+  margin: 24px auto 0;
+}
+.form-page,
+.auth-page,
+.info-page {
+  width: min(760px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 52px 0 96px;
+}
+.form-card {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--panel);
+}
+.form-card label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+}
+.form-card input,
+.form-card select,
+.form-card textarea {
+  width: 100%;
+}
+.settings-grid {
+  align-items: stretch;
+  flex-direction: column;
+}
+.settings-grid > * {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+}
+.info-page .rules-card {
+  min-height: 220px;
+}
+footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+@media (max-width: 780px) {
+  .catalogue-controls,
+  .wallet-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .header-actions {
+    gap: 8px;
+  }
+  .balance-link,
+  .header-actions .secondary-button {
+    display: none;
   }
 }

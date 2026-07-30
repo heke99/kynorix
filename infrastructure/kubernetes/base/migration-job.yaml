@@ -1,0 +1,31 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-migration
+  namespace: kynorix
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: kynorix-database-migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: migration
+          image: registry.example.invalid/kynorix/database:replace-with-signed-digest
+          imagePullPolicy: IfNotPresent
+          command: ['npm', 'run', 'migrate', '-w', '@kynorix/database']
+          envFrom:
+            - secretRef:
+                name: kynorix-database-runtime
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ['ALL']

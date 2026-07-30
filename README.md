@@ -1,61 +1,62 @@
 # Kynorix
 
-Kynorix is a modular event-exchange platform. This repository is intentionally
-**sandbox-first**: the working product uses virtual balances and is suitable for
-technical validation and private forecasting pilots. Real-money trading,
-custody, spot crypto, five-minute UP/DOWN markets and binary-option-like
-products are denied by server-side product policy.
+Kynorix is an English-language event exchange for web, iOS, Android, and
+protected operations. PostgreSQL is authoritative for identity mappings,
+markets, orders, fills, positions, payment state, double-entry journals,
+resolution evidence, audit records, and transactional outbox events.
 
-## Included
+The runtime has no in-process financial store, no automatically authenticated
+identity, no customer funding fixtures, and no provider-success fallback.
+Required identity, payment, custody, compliance, pricing, notification, storage,
+broker, Redis, and PostgreSQL settings are validated at startup. Readiness stays
+closed until every mandatory dependency is healthy.
 
-- Public trading web app
-- Operations/admin portal
-- Expo React Native mobile app
-- Fastify REST and WebSocket API
-- Deterministic price/time matching engine
-- Double-entry virtual-money ledger
-- Market lifecycle and two-person resolution workflow
-- Tenant, product, jurisdiction and feature-policy boundaries
-- PostgreSQL canonical schema, RLS policies and immutable-market protections
-- Local infrastructure, CI, OpenAPI, threat model and runbooks
+## Applications
 
-## Quick start
+- `apps/web`: public market catalogue and authenticated customer account.
+- `apps/admin`: separately deployed operations console.
+- `apps/mobile`: Expo application using OIDC PKCE and native secure storage.
+- `apps/api`: Fastify REST and WebSocket API.
+- `apps/worker`: price ingestion, scheduled jobs, outbox publishing,
+  notification delivery, and reconciliation checks.
 
-Requirements: Node.js 22+, npm 10+.
+Shared contracts, deterministic matching rules, financial invariants, and the
+canonical PostgreSQL schema live under `packages/`.
+
+## Local prerequisites
+
+- Node.js 22 or later
+- npm 10 or later
+- Docker with Compose
+- Explicit development credentials for every external adapter
+
+Copy `.env.example` to `.env`, replace every placeholder, then run:
 
 ```bash
-cp .env.example .env
-npm install
+npm ci
+docker compose up -d
+npm run migrate -w @kynorix/database
+npm run verify
 npm run dev
 ```
 
-Open:
+Endpoints:
 
-- Trading web: http://localhost:3000
-- Admin: http://localhost:3001
-- API health: http://localhost:4000/health
+- Customer web: `http://localhost:3000`
+- Operations: `http://localhost:3001`
+- API liveness: `http://localhost:4000/health/live`
+- API readiness: `http://localhost:4000/health/ready`
 
-The API starts with deterministic sandbox seed data. Use the displayed demo
-identities (`demo-alex` and `demo-sam`). Restarting the API resets in-memory
-sandbox state.
+The checked-in baseline contains schema only. Create the first tenant,
+administrator, assets, products, policies, providers, fee schedules, and market
+templates through audited operator bootstrap procedures before starting the
+customer runtime.
 
-## Verification
+## Release policy
 
-```bash
-npm run verify
-```
-
-## PostgreSQL infrastructure
-
-The runnable demo deliberately uses an in-memory adapter. The authoritative
-production persistence model is in `packages/database/migrations`. Start local
-dependencies and apply it with:
-
-```bash
-docker compose up -d postgres redis redpanda clickhouse minio
-npm run migrate -w @kynorix/database
-```
-
-Do not connect payment, custody or real-money providers until every go-live gate
-in `docs/compliance/GO_LIVE_GATES.md` has independent written approval.
-# kynorix
+Passing builds do not authorize a launch. Follow
+`docs/PRODUCTION_READINESS_REPORT.md` and
+`docs/compliance/GO_LIVE_GATES.md`. Production activation also requires the
+applicable licences, approved product and jurisdiction policies, configured
+provider accounts, key management, backup/restore evidence, penetration
+testing, and operational sign-off.

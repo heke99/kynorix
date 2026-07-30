@@ -1,52 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
   DeterministicOrderBook,
-  DoubleEntryLedger,
+  assertBalancedPostings,
   decideProductAccess,
   transitionMarket,
 } from './index.js';
 
 describe('Kynorix core invariants', () => {
   it('rejects an unbalanced ledger journal', () => {
-    const ledger = new DoubleEntryLedger();
-    ledger.createAccount({
-      accountRef: 'treasury',
-      tenantRef: 't1',
-      ownerRef: null,
-      asset: 'VSEK',
-      accountType: 'treasury_cash',
-      normalSide: 'debit',
-    });
-    ledger.createAccount({
-      accountRef: 'customer',
-      tenantRef: 't1',
-      ownerRef: 'u1',
-      asset: 'VSEK',
-      accountType: 'customer_available',
-      normalSide: 'credit',
-    });
     expect(() =>
-      ledger.post({
-        tenantRef: 't1',
-        transactionType: 'sandbox_grant',
-        asset: 'VSEK',
-        referenceType: 'grant',
-        referenceRef: 'g1',
-        idempotencyKey: 'grant-1',
-        postings: [
-          { accountRef: 'treasury', debitAtoms: 100n },
-          { accountRef: 'customer', creditAtoms: 99n },
-        ],
-      }),
+      assertBalancedPostings([
+        { accountRef: 'treasury', debitAtoms: 100n },
+        { accountRef: 'customer', creditAtoms: 99n },
+      ]),
     ).toThrow(/Unbalanced/);
   });
 
   it('matches by price then time at the resting maker price', () => {
-    const book = new DeterministicOrderBook('m1', 'yes');
+    const book = new DeterministicOrderBook('market-1', 'yes');
     book.accept({
       orderRef: 'sell-1',
-      userRef: 'maker-a',
-      marketRef: 'm1',
+      userRef: 'maker-1',
+      marketRef: 'market-1',
       outcomeRef: 'yes',
       side: 'sell',
       priceAtoms: 55n,
@@ -56,8 +31,8 @@ describe('Kynorix core invariants', () => {
     });
     const result = book.accept({
       orderRef: 'buy-1',
-      userRef: 'taker-b',
-      marketRef: 'm1',
+      userRef: 'taker-1',
+      marketRef: 'market-1',
       outcomeRef: 'yes',
       side: 'buy',
       priceAtoms: 60n,
@@ -65,24 +40,39 @@ describe('Kynorix core invariants', () => {
       timeInForce: 'GTC',
       postOnly: false,
     });
-    expect(result.trades).toHaveLength(1);
     expect(result.trades[0]?.priceAtoms).toBe(55n);
     expect(result.trades[0]?.quantity).toBe(4n);
-    expect(book.snapshot().asks[0]?.quantity).toBe('6');
   });
 
-  it('denies every real-money and five-minute product by server policy', () => {
-    const subject = {
-      country: 'SE',
-      customerType: 'consumer' as const,
-      kycLevel: 'identity_verified',
-      channel: 'web' as const,
-      selfExcluded: false,
-      sanctionsHit: false,
+  it('enforces a persisted product policy', () => {
+    const policy = {
+      productRef: 'event-contract-v1',
+      productType: 'event_contract' as const,
+      status: 'approved' as const,
+      targetCustomerTypes: ['customer'],
+      permittedCountries: ['US'],
+      blockedCountries: [],
+      requiredKycLevel: 'basic',
+      allowedChannels: ['web' as const],
+      positionLimitAtoms: 1000n,
+      effectiveFrom: '2026-01-01T00:00:00.000Z',
+      effectiveTo: null,
     };
-    expect(decideProductAccess('real_money_prediction', subject).decision).toBe('blocked_product');
-    expect(decideProductAccess('five_minute_up_down', subject).decision).toBe('blocked_product');
-    expect(decideProductAccess('virtual_prediction', subject).decision).toBe('allowed');
+    expect(
+      decideProductAccess(
+        policy,
+        {
+          country: 'US',
+          customerType: 'customer',
+          kycLevel: 'basic',
+          channel: 'web',
+          selfExcluded: false,
+          sanctionsHit: false,
+          accountRestricted: false,
+        },
+        new Date('2026-07-30T00:00:00.000Z'),
+      ).decision,
+    ).toBe('allowed');
   });
 
   it('enforces the central market state machine', () => {

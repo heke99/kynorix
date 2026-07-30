@@ -2,33 +2,41 @@
   "expo": {
     "name": "Kynorix",
     "slug": "kynorix",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "kynorix",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.kynorix.sandbox",
+      "bundleIdentifier": "com.kynorix.app",
+      "associatedDomains": ["applinks:app.kynorix.com"],
       "infoPlist": {
-        "NSFaceIDUsageDescription": "Kynorix använder Face ID för att skydda din lokala sandbox-session."
+        "NSFaceIDUsageDescription": "Kynorix uses Face ID to protect access to your account."
       }
     },
     "android": {
-      "package": "com.kynorix.sandbox"
+      "package": "com.kynorix.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [{ "scheme": "https", "host": "app.kynorix.com", "pathPrefix": "/" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
     },
     "plugins": [
       [
         "expo-secure-store",
         {
-          "configureAndroidBackup": true,
-          "faceIDPermission": "Tillåt Kynorix att använda Face ID."
+          "configureAndroidBackup": false,
+          "faceIDPermission": "Allow Kynorix to use Face ID."
         }
-      ]
+      ],
+      ["expo-notifications"]
     ],
     "extra": {
-      "productMode": "sandbox",
-      "realMoneyEnabled": false,
-      "binaryOptionsEnabled": false
+      "minimumSupportedVersion": "1.0.0"
     }
   }
 }
